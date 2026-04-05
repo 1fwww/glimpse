@@ -63,7 +63,7 @@ export default function WelcomeApp() {
               </svg>
             </div>
             <h1 className="welcome-title">Welcome to Glimpse</h1>
-            <p className="welcome-desc">Snap it, ask it, right here.</p>
+            <p className="welcome-desc">Snap it. Ask it. Never lose your flow.</p>
             <button className="welcome-btn" onClick={() => setStep(1)}>Get Started</button>
           </div>
         )}
@@ -159,16 +159,51 @@ export default function WelcomeApp() {
               </div>
             </div>
 
-            <button className="welcome-btn" onClick={handleGetStarted} disabled={!triedShortcuts.screenshot || !triedShortcuts.chat}>
-              {triedShortcuts.screenshot && triedShortcuts.chat ? 'Start Using Glimpse' : 'Try both shortcuts to continue'}
+            <button className="welcome-btn" onClick={() => setStep(3)} disabled={!triedShortcuts.screenshot || !triedShortcuts.chat}>
+              {triedShortcuts.screenshot && triedShortcuts.chat ? 'Continue' : 'Try both shortcuts to continue'}
             </button>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="welcome-step">
+            <h2 className="welcome-subtitle">Chat & Pin</h2>
+            <p className="welcome-desc">Chat with AI, pin it to stay focused.</p>
+
+            <div className="welcome-features">
+              <div className="welcome-feature-row">
+                <div className="welcome-feature-icon">
+                  <svg viewBox="60 140 420 280" width={28} height={19}>
+                    <path d="M104.539 204.375C153.938 173.009 385 145.971 437.19 251.313" fill="none" stroke="#6C63FF" strokeWidth="20" strokeLinecap="round" />
+                    <path d="M262 374.28C230.253 373.396 178.271 361.552 128 321.247C177.587 275.666 316.314 196.628 390.289 269.765C467.605 346.206 348.474 380.522 321.426 374.28C237.073 368.093 260.551 273.518 321.426 278.821C382.301 284.124 362.664 347.764 321.426 331.854" fill="none" stroke="#6C63FF" strokeWidth="22" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <div className="welcome-feature-info">
+                  <div className="welcome-feature-name">Ask AI</div>
+                  <div className="welcome-feature-desc">Tap the eye icon to ask AI — right where you're working</div>
+                </div>
+              </div>
+              <div className="welcome-feature-row">
+                <div className="welcome-feature-icon">
+                  <svg viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="#00E5FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 17v5" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z" />
+                  </svg>
+                </div>
+                <div className="welcome-feature-info">
+                  <div className="welcome-feature-name">Pin to Screen</div>
+                  <div className="welcome-feature-desc">Pin the chat on screen while you work</div>
+                </div>
+              </div>
+            </div>
+
+            <button className="welcome-btn" onClick={handleGetStarted}>Start Using Glimpse</button>
           </div>
         )}
 
       </div>
       <div className="welcome-footer">
         <div className="welcome-dots">
-          {[0, 1, 2].map(i => (
+          {[0, 1, 2, 3].map(i => (
             <div key={i} className={`welcome-dot ${step === i ? 'active' : ''}`} onClick={() => { if (i <= step) setStep(i) }} />
           ))}
         </div>

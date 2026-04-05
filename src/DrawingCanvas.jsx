@@ -424,7 +424,15 @@ export default function DrawingCanvas({
       return
     }
     if (activeTool === 'pen') {
-      setCurrentShape(prev => ({ ...prev, points: [...(prev?.points || []), pos] }))
+      setCurrentShape(prev => {
+        const pts = prev?.points || []
+        const last = pts[pts.length - 1]
+        const dist = last ? Math.hypot(pos.x - last.x, pos.y - last.y) : 999
+        if (dist < 20) return prev
+        const newPts = [...pts, pos]
+        if (newPts.length % 20 === 0) console.log('[pen] points:', newPts.length, 'dist:', dist.toFixed(1))
+        return { ...prev, points: newPts }
+      })
     } else if (['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
       setCurrentShape({
         type: activeTool, x1: drawStart.x, y1: drawStart.y,
@@ -559,8 +567,19 @@ function drawAnnotation(ctx, ann, screenImg, selection, windowOffset, displayInf
     }
     case 'pen': {
       if (!ann.points || ann.points.length < 2) break
-      ctx.beginPath(); ctx.moveTo(ann.points[0].x, ann.points[0].y)
-      for (let i = 1; i < ann.points.length; i++) ctx.lineTo(ann.points[i].x, ann.points[i].y)
+      ctx.beginPath()
+      ctx.moveTo(ann.points[0].x, ann.points[0].y)
+      if (ann.points.length === 2) {
+        ctx.lineTo(ann.points[1].x, ann.points[1].y)
+      } else {
+        for (let i = 1; i < ann.points.length - 1; i++) {
+          const mx = (ann.points[i].x + ann.points[i + 1].x) / 2
+          const my = (ann.points[i].y + ann.points[i + 1].y) / 2
+          ctx.quadraticCurveTo(ann.points[i].x, ann.points[i].y, mx, my)
+        }
+        const last = ann.points[ann.points.length - 1]
+        ctx.lineTo(last.x, last.y)
+      }
       ctx.stroke()
       break
     }

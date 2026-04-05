@@ -270,7 +270,7 @@ export default function EditToolbar({ selection, chatPos, chatHeight, activeTool
         className={`edit-ai-toggle ${!chatMinimized ? 'active' : ''}`}
         onClick={onToggleChat}
         onMouseDown={(e) => e.stopPropagation()}
-        title={chatMinimized ? 'Open AI chat' : 'Minimize chat'}
+        data-tip={chatMinimized ? 'Ask AI' : 'Minimize chat'}
       >
         {chatMinimized ? (
           <svg viewBox="60 140 420 280" width="30" height="20">
