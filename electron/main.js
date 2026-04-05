@@ -11,7 +11,9 @@ let chatWindow = null // single chat window for all modes (standalone, pinned, d
 let chatWindowCreating = false
 const isDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development'
 const DEV_PORT = process.env.VITE_PORT || 5173
-const GET_WINDOWS_BIN = path.join(__dirname, 'get-windows')
+const GET_WINDOWS_BIN = isDev
+  ? path.join(__dirname, 'get-windows')
+  : path.join(process.resourcesPath, 'get-windows')
 const MAX_THREADS = 5
 const THREADS_DIR = path.join(app.getPath('userData'), 'threads')
 const KEYS_PATH = path.join(app.getPath('userData'), 'api-keys.json')

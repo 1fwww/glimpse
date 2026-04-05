@@ -48,6 +48,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      ".env",
       "node_modules/**/*",
       "!node_modules/*/{CHANGELOG.md,README.md,readme.md,test,__tests__,tests,*.d.ts}"
     ],
