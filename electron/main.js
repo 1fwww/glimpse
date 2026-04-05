@@ -381,6 +381,10 @@ app.whenReady().then(() => {
       welcomeWindow.webContents.send('shortcut-tried', 'screenshot')
       return
     }
+    if (!fs.existsSync(ONBOARDING_PATH)) {
+      createWelcomeWindow()
+      return
+    }
     closeChatWindow()
 
     const activeDisplay = getActiveDisplay()
@@ -435,6 +439,10 @@ app.whenReady().then(() => {
 
     if (welcomeWindow && !welcomeWindow.isDestroyed()) {
       welcomeWindow.webContents.send('shortcut-tried', 'chat')
+      return
+    }
+    if (!fs.existsSync(ONBOARDING_PATH)) {
+      createWelcomeWindow()
       return
     }
     if (overlayWindow) { overlayWindow.destroy(); overlayWindow = null }
@@ -591,6 +599,13 @@ app.whenReady().then(() => {
 
   ipcMain.on('welcome-done', () => {
     fs.writeFileSync(ONBOARDING_PATH, Date.now().toString(), 'utf8')
+    if (welcomeWindow && !welcomeWindow.isDestroyed()) {
+      welcomeWindow.close()
+      welcomeWindow = null
+    }
+  })
+
+  ipcMain.on('close-welcome', () => {
     if (welcomeWindow && !welcomeWindow.isDestroyed()) {
       welcomeWindow.close()
       welcomeWindow = null

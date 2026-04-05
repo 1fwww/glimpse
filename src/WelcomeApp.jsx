@@ -35,8 +35,7 @@ export default function WelcomeApp() {
   }
 
   const handleClose = () => {
-    window.electronAPI?.closeChatWindow?.()
-    window.close()
+    window.electronAPI?.closeWelcome?.()
   }
 
   useEffect(() => {

@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkPermissions: () => ipcRenderer.invoke('check-permissions'),
   openPermissionSettings: (type) => ipcRenderer.send('open-permission-settings', type),
   welcomeDone: () => ipcRenderer.send('welcome-done'),
+  closeWelcome: () => ipcRenderer.send('close-welcome'),
   onShortcutTried: (callback) => ipcRenderer.on('shortcut-tried', (_, type) => callback(type)),
   openSettings: () => ipcRenderer.send('open-settings'),
   closeSettings: () => ipcRenderer.send('close-settings'),
