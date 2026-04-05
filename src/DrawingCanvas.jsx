@@ -430,7 +430,7 @@ export default function DrawingCanvas({
         const dist = last ? Math.hypot(pos.x - last.x, pos.y - last.y) : 999
         if (dist < 20) return prev
         const newPts = [...pts, pos]
-        if (newPts.length % 20 === 0) console.log('[pen] points:', newPts.length, 'dist:', dist.toFixed(1))
+
         return { ...prev, points: newPts }
       })
     } else if (['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {

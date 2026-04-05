@@ -48,11 +48,16 @@
       "icon": "build/icon.icns"
     },
     "files": [
-      "dist/**/*",
+      "dist/assets/**/*",
+      "dist/index.html",
       "electron/**/*",
       ".env",
       "node_modules/**/*",
-      "!node_modules/*/{CHANGELOG.md,README.md,readme.md,test,__tests__,tests,*.d.ts}"
+      "!node_modules/*/{CHANGELOG.md,README.md,readme.md,test,__tests__,tests,*.d.ts}",
+      "!node_modules/**/*.map",
+      "!node_modules/**/*.d.ts",
+      "!node_modules/**/*.d.mts",
+      "!node_modules/**/LICENSE*"
     ],
     "extraResources": [
       {

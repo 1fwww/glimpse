@@ -103,12 +103,12 @@ function createWelcomeWindow() {
   })
   welcomeWindow.loadURL(getURL('welcome'))
   welcomeWindow.webContents.on('did-finish-load', () => {
-    console.log('[Glimpse] Welcome window loaded')
+
     welcomeWindow.show()
     welcomeWindow.focus()
   })
   welcomeWindow.on('closed', () => {
-    console.log('[Glimpse] Welcome window closed')
+
     welcomeWindow = null
   })
 }
@@ -168,7 +168,7 @@ function checkPermissions() {
     // On newer Electron, check via systemPreferences or assume granted if shortcuts work
     accessibility = globalShortcut.isRegistered('CommandOrControl+Shift+Z')
   }
-  console.log('[Glimpse] permissions — screen:', screen, 'accessibility:', accessibility)
+
   return {
     screen: screen === 'granted',
     accessibility,
@@ -366,8 +366,7 @@ async function chatWithProvider(messages, provider) {
 // ── App lifecycle ──
 
 app.whenReady().then(() => {
-  console.log('[Glimpse] App ready')
-  console.log('[Glimpse] isDev:', isDev)
+
   fs.mkdirSync(THREADS_DIR, { recursive: true })
 
   // Show welcome on first launch
@@ -377,7 +376,7 @@ app.whenReady().then(() => {
 
   // Cmd+Shift+Z → screenshot mode
   const r1 = globalShortcut.register('CommandOrControl+Shift+Z', async () => {
-    console.log('[Glimpse] Cmd+Shift+Z triggered')
+
     if (welcomeWindow && !welcomeWindow.isDestroyed()) {
       welcomeWindow.webContents.send('shortcut-tried', 'screenshot')
       return
@@ -429,11 +428,11 @@ app.whenReady().then(() => {
     }
   })
 
-  console.log('[Glimpse] Shortcut Cmd+Shift+Z registered:', r1)
+
 
   // Cmd+Shift+C → standalone chat (grab selected text)
   const r2 = globalShortcut.register('CommandOrControl+Shift+C', async () => {
-    console.log('[Glimpse] Cmd+Shift+C triggered')
+
     if (welcomeWindow && !welcomeWindow.isDestroyed()) {
       welcomeWindow.webContents.send('shortcut-tried', 'chat')
       return
@@ -469,7 +468,7 @@ app.whenReady().then(() => {
     createChatWindow({ selectedText })
     chatWindowCreating = false
   })
-  console.log('[Glimpse] Shortcut Cmd+Shift+C registered:', r2)
+
 
   // ── Menu bar tray ──
   // TODO: Tray icon — needs debugging on macOS 26
