@@ -539,6 +539,7 @@ export default function App() {
           isNewThread={tm.isNewThread}
           setIsNewThread={tm.setIsNewThread}
           refreshThreads={tm.refreshThreads}
+          refreshProviders={tm.refreshProviders}
           onClose={closeWithAnimation}
           onMinimize={handleMinimizeChat}
           onPin={() => {

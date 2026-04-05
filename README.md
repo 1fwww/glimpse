@@ -30,7 +30,7 @@ A macOS screenshot + AI chat tool. Capture any region of your screen, annotate i
 ### Setup
 
 ```bash
-git clone https://github.com/yifuwu/glimpse.git
+git clone https://github.com/1fwww/glimpse.git
 cd glimpse
 npm install
 cp .env.example .env

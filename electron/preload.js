@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSetCroppedImage: (callback) => ipcRenderer.on('set-cropped-image', (_, img) => callback(img)),
   onTextContext: (callback) => ipcRenderer.on('text-context', (_, text) => callback(text)),
   chatReady: () => ipcRenderer.send('chat-ready'),
+  getApiKeys: () => ipcRenderer.invoke('get-api-keys'),
+  saveApiKeys: (keys) => ipcRenderer.invoke('save-api-keys', keys),
+  validateInviteCode: (code) => ipcRenderer.invoke('validate-invite-code', code),
+  openExternal: (url) => ipcRenderer.send('open-external', url),
+  resizeChatWindow: (size) => ipcRenderer.send('resize-chat-window', size),
   copyImage: (dataUrl) => ipcRenderer.invoke('copy-image', dataUrl),
   saveImage: (dataUrl) => ipcRenderer.invoke('save-image', dataUrl),
 })

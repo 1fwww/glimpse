@@ -1467,3 +1467,178 @@
   z-index: 10000;
   animation: tooltipFadeIn 0.1s ease-out;
 }
+
+/* ═══════════════════════════════════════════════
+   API KEY SETUP
+   ═══════════════════════════════════════════════ */
+
+.api-key-setup {
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: var(--surface-deep);
+  flex: 1;
+  overflow-y: auto;
+  animation: setupSlideUp 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes setupSlideUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.api-key-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.api-key-header h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+
+.api-key-desc {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.api-key-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.api-key-field label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+
+.api-key-field input {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-dim);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.api-key-field input:focus {
+  border-color: var(--cyan-primary);
+}
+
+.api-key-field input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.5;
+}
+
+.api-key-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.api-key-hint a {
+  color: var(--cyan-dim);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.api-key-hint a:hover {
+  color: var(--cyan-primary);
+}
+
+.api-key-error {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #ff6b6b;
+}
+
+.api-key-save {
+  margin-top: 8px;
+  padding: 10px 16px;
+  background: rgba(108, 99, 255, 0.15);
+  border: 1px solid rgba(108, 99, 255, 0.4);
+  border-radius: 6px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.api-key-save:hover:not(:disabled) {
+  background: rgba(108, 99, 255, 0.25);
+  border-color: rgba(108, 99, 255, 0.6);
+}
+
+.api-key-save:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.api-key-privacy {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
+}
+
+.api-key-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.api-key-dot {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.api-key-link {
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--cyan-dim);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.api-key-link:hover {
+  color: var(--cyan-primary);
+}
+
+.api-key-welcome {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+  animation: welcomeFadeIn 0.3s ease-out;
+}
+
+@keyframes welcomeFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}

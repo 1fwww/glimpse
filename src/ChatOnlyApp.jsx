@@ -63,6 +63,7 @@ export default function ChatOnlyApp() {
         isNewThread={tm.isNewThread}
         setIsNewThread={tm.setIsNewThread}
         refreshThreads={tm.refreshThreads}
+        refreshProviders={tm.refreshProviders}
         onClose={handleClose}
         onMinimize={handleClose}
         provider={tm.provider}

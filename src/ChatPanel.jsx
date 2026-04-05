@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import ApiKeySetup from './ApiKeySetup'
 
 const GlimpseIcon = ({ size = 20 }) => (
   <svg viewBox="60 140 420 280" width={size} height={Math.round(size * 280 / 420)}>
@@ -30,6 +31,7 @@ function Tooltip({ text, children }) {
       }}
       onMouseLeave={() => setPos(null)}
       style={{ display: 'inline-flex' }}
+      data-no-drag
     >
       {children}
       {pos && ReactDOM.createPortal(
@@ -67,7 +69,9 @@ export default function ChatPanel({
   isNewThread,
   setIsNewThread,
   refreshThreads,
+  refreshProviders,
   onClose,
+  onMinimize,
   onPin,
   isPinned,
   onTogglePin,
@@ -78,6 +82,10 @@ export default function ChatPanel({
   const [input, setInput] = useState('')
   const [threadMenuOpen, setThreadMenuOpen] = useState(false)
   const [textContext, setTextContext] = useState(initialContext || '')
+  const [showApiKeySetup, setShowApiKeySetup] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(false)
+  const pendingQuestion = useRef(null)
+  const pendingImageRef = useRef(null)
 
   // Update textContext when initialContext arrives via IPC
   useEffect(() => {
@@ -164,6 +172,77 @@ export default function ChatPanel({
     }
   }, [annotationCount])
 
+  // Expand panel when setup appears
+  useEffect(() => {
+    if (showApiKeySetup) {
+      if (!chatFullSize) setChatFullSize(true)
+      window.electronAPI?.resizeChatWindow?.({ width: 420, height: 520 })
+    }
+  }, [showApiKeySetup])
+
+  // After welcome animation, auto-send pending question (skip re-adding user msg)
+  useEffect(() => {
+    if (!showWelcome && pendingQuestion.current && availableProviders.length > 0) {
+      const q = pendingQuestion.current
+      const pendingImage = pendingImageRef.current
+      pendingQuestion.current = null
+      pendingImageRef.current = null
+      setInput('')
+
+      // Build API message from the already-displayed user message
+      const contentBlocks = []
+      if (pendingImage) {
+        const mediaType = pendingImage.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png'
+        contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: pendingImage.split(',')[1] } })
+      }
+      contentBlocks.push({ type: 'text', text: q })
+      apiMessages.current.push({ role: 'user', content: contentBlocks })
+
+      // Send to AI without re-adding user message to UI
+      setIsLoading(true)
+      setTimeout(() => scrollToBottom(), 50)
+      ;(async () => {
+        try {
+          const result = await window.electronAPI.chatWithAI(apiMessages.current, provider)
+          setIsLoading(false)
+          if (result.success) {
+            const assistantText = result.content.map(c => c.text || '').join('')
+            apiMessages.current.push({ role: 'assistant', content: result.content })
+            setMessages(prev => [...prev, { role: 'assistant', text: assistantText }])
+            if (!chatFullSize) setChatFullSize(true)
+            setTimeout(() => scrollToLastAssistant(), 550)
+
+            // Save thread + generate title
+            const now = Date.now()
+            const thread = {
+              id: currentThread?.id || generateId(),
+              title: currentThread?.title || 'New Chat',
+              messages: [...apiMessages.current],
+              createdAt: currentThread?.createdAt || now,
+              updatedAt: now,
+            }
+            await saveCurrentThread(thread)
+
+            const titleMsgs = apiMessages.current.map(m => ({
+              ...m,
+              content: Array.isArray(m.content)
+                ? m.content.filter(c => c.type !== 'image')
+                : m.content,
+            }))
+            const title = await generateTitle(titleMsgs)
+            if (title) {
+              thread.title = title
+              await saveCurrentThread(thread)
+              setIsNewThread(false)
+            }
+          }
+        } catch {
+          setIsLoading(false)
+        }
+      })()
+    }
+  }, [showWelcome, availableProviders])
+
   // Track scroll position
   const handleScroll = useCallback(() => {
     const el = messagesContainerRef.current
@@ -205,9 +284,32 @@ export default function ChatPanel({
     return null
   }, [provider])
 
-  const sendMessage = async () => {
-    const text = input.trim()
+  const sendMessage = async (overrideText) => {
+    const text = (overrideText || input).trim()
     if (!text || isLoading) return
+
+    // No API keys configured → show message briefly, then setup
+    if (!availableProviders.length) {
+      pendingQuestion.current = text
+      setInput('')
+      if (!chatFullSize) setChatFullSize(true)
+      // Show user's message in chat
+      const msgEntry = { role: 'user', text }
+      if (croppedImage) {
+        const composite = await getCompositeImage?.()
+        msgEntry.image = composite || croppedImage
+        pendingImageRef.current = msgEntry.image
+        setScreenshotAttached(false)
+      }
+      setMessages([msgEntry])
+      setIsLoading(true)
+      setTimeout(() => {
+        setIsLoading(false)
+        setShowApiKeySetup(true)
+        if (!chatFullSize) setChatFullSize(true)
+      }, 1000)
+      return
+    }
 
     setInput('')
     const contentBlocks = []
@@ -347,7 +449,7 @@ export default function ChatPanel({
   const resizeEdge = useRef(null)
 
   const handleHeaderMouseDown = (e) => {
-    if (e.target.closest('button')) return
+    if (e.target.closest('button') || e.target.closest('[data-no-drag]')) return
     isDragging.current = true
     dragStart.current = { x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y }
 
@@ -493,56 +595,85 @@ export default function ChatPanel({
 
       {/* Messages */}
       <div className="chat-messages-wrapper">
-          <div
-            className="chat-messages"
-            ref={messagesContainerRef}
-            onScroll={handleScroll}
-          >
-            {messages.map((msg, i) => {
-              const isLastAssistant = msg.role === 'assistant' && i === messages.length - 1
-              return (
-                <div
-                  key={i}
-                  className={`chat-msg ${msg.role}`}
-                  ref={isLastAssistant ? lastAssistantRef : null}
-                >
-                  {msg.role === 'assistant' ? (
-                    <div className="msg-text"><Markdown remarkPlugins={[remarkGfm]}>{msg.text}</Markdown></div>
-                  ) : (
-                    <>
-                      {msg.image && (
-                        <img src={msg.image} alt="screenshot" className="msg-image" />
-                      )}
-                      {msg.snippet && (
-                        <div className="msg-snippet">
-                          <div className="msg-snippet-text">{msg.snippet.length > 200 ? msg.snippet.slice(0, 200) + '…' : msg.snippet}</div>
-                        </div>
-                      )}
-                      <div className="msg-text">{msg.text}</div>
-                    </>
-                  )}
-                </div>
-              )
-            })}
-            {isLoading && (
-              <div className="chat-msg assistant" ref={lastAssistantRef}>
-                <div className="thinking-text">thinking...</div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+        {showApiKeySetup ? (
+          <ApiKeySetup onSkip={() => {
+            setShowApiKeySetup(false)
+            setMessages([])
+            pendingQuestion.current = null
+            pendingImageRef.current = null
+            setChatFullSize(false)
+            if (onMinimize) onMinimize()
+          }} onDone={async () => {
+            setShowApiKeySetup(false)
+            if (refreshProviders) await refreshProviders()
+            setShowWelcome(true)
+            setEyebrowWiggle(true)
+            setTimeout(() => {
+              setShowWelcome(false)
+              setEyebrowWiggle(false)
+            }, 2000)
+          }} />
+        ) : showWelcome ? (
+          <div className="api-key-welcome">
+            <span className="glimpse-icon-fixed glimpse-loading">
+              <GlimpseIcon size={32} />
+            </span>
+            <span>Key added. Welcome to Glimpse Chat!</span>
           </div>
-
-          {/* Scroll to bottom arrow */}
-          {showScrollDown && (
-            <button
-              className="scroll-to-bottom"
-              onClick={scrollToBottom}
+        ) : (
+          <>
+            <div
+              className="chat-messages"
+              ref={messagesContainerRef}
+              onScroll={handleScroll}
             >
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M7 13l5 5 5-5M7 6l5 5 5-5" />
-              </svg>
-            </button>
-          )}
+              {messages.map((msg, i) => {
+                const isLastAssistant = msg.role === 'assistant' && i === messages.length - 1
+                return (
+                  <div
+                    key={i}
+                    className={`chat-msg ${msg.role}`}
+                    ref={isLastAssistant ? lastAssistantRef : null}
+                  >
+                    {msg.role === 'assistant' ? (
+                      <div className="msg-text"><Markdown remarkPlugins={[remarkGfm]}>{msg.text}</Markdown></div>
+                    ) : (
+                      <>
+                        {msg.image && (
+                          <img src={msg.image} alt="screenshot" className="msg-image" />
+                        )}
+                        {msg.snippet && (
+                          <div className="msg-snippet">
+                            <div className="msg-snippet-text">{msg.snippet.length > 200 ? msg.snippet.slice(0, 200) + '…' : msg.snippet}</div>
+                          </div>
+                        )}
+                        <div className="msg-text">{msg.text}</div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+              {isLoading && (
+                <div className="chat-msg assistant" ref={lastAssistantRef}>
+                  <div className="thinking-text">thinking...</div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Scroll to bottom arrow */}
+            {showScrollDown && (
+              <button
+                className="scroll-to-bottom"
+                onClick={scrollToBottom}
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M7 13l5 5 5-5M7 6l5 5 5-5" />
+                </svg>
+              </button>
+            )}
+          </>
+        )}
         </div>
 
       {/* Input */}
@@ -575,8 +706,9 @@ export default function ChatPanel({
             onFocus={() => window.electronAPI?.inputFocus?.()}
             placeholder={isNewThread ? (croppedImage ? 'Ask about this screenshot...' : 'Start a conversation...') : 'Continue discussion...'}
             rows={2}
+            disabled={showApiKeySetup}
           />
-          <button className="chat-send-arrow" onClick={sendMessage} disabled={isLoading || !input.trim()}>
+          <button className="chat-send-arrow" onClick={sendMessage} disabled={isLoading || !input.trim() || showApiKeySetup}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 19V5M5 12l7-7 7 7" />
             </svg>
@@ -586,7 +718,7 @@ export default function ChatPanel({
 
       {/* Bottom bar */}
       <div className="thread-actions">
-        {!croppedImage && onClose && (
+        {onClose && (!croppedImage || isPinned) && (
           <button className="thread-action-link" onClick={onClose}>
             ESC to close
           </button>

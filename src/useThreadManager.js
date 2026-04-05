@@ -87,6 +87,12 @@ export default function useThreadManager() {
     })
   }, [])
 
+  const refreshProviders = useCallback(async () => {
+    const providers = await window.electronAPI?.getAvailableProviders()
+    setAvailableProviders(providers || [])
+    if (providers?.length > 0) setProvider(providers[0].id)
+  }, [])
+
   return {
     currentThread,
     setCurrentThread: handleSetCurrentThread,
@@ -101,5 +107,6 @@ export default function useThreadManager() {
     handleClearAllThreads,
     refreshThreads,
     refreshWithHeuristic,
+    refreshProviders,
   }
 }

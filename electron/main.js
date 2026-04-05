@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, screen, clipboard, nativeImage, dialog } = require('electron')
+const { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, screen, clipboard, nativeImage, dialog, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { execFile } = require('child_process')
@@ -14,9 +14,41 @@ const DEV_PORT = process.env.VITE_PORT || 5173
 const GET_WINDOWS_BIN = path.join(__dirname, 'get-windows')
 const MAX_THREADS = 5
 const THREADS_DIR = path.join(app.getPath('userData'), 'threads')
+const KEYS_PATH = path.join(app.getPath('userData'), 'api-keys.json')
 
-const claudeClient = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null
-const geminiClient = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null
+// ── API key management ──
+
+function loadApiKeys() {
+  try {
+    return JSON.parse(fs.readFileSync(KEYS_PATH, 'utf8'))
+  } catch { return {} }
+}
+
+function saveApiKeys(keys) {
+  fs.writeFileSync(KEYS_PATH, JSON.stringify(keys), 'utf8')
+  initClients()
+}
+
+function getEffectiveKey(provider) {
+  const stored = loadApiKeys()
+  if (provider === 'anthropic') return stored.ANTHROPIC_API_KEY || ''
+  if (provider === 'gemini') return stored.GEMINI_API_KEY || ''
+  return ''
+}
+
+// ── AI clients (lazy init) ──
+
+let claudeClient = null
+let geminiClient = null
+
+function initClients() {
+  const anthropicKey = getEffectiveKey('anthropic')
+  const geminiKey = getEffectiveKey('gemini')
+  claudeClient = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null
+  geminiClient = geminiKey ? new GoogleGenerativeAI(geminiKey) : null
+}
+
+initClients()
 
 // ── Helpers ──
 
@@ -399,6 +431,19 @@ app.whenReady().then(() => {
     if (overlayWindow) overlayWindow.setAlwaysOnTop(true, 'floating')
   })
 
+  ipcMain.on('open-external', (_, url) => {
+    shell.openExternal(url)
+  })
+
+  ipcMain.on('resize-chat-window', (_, { width, height }) => {
+    if (chatWindow && !chatWindow.isDestroyed()) {
+      const [curW, curH] = chatWindow.getSize()
+      if (curW < width || curH < height) {
+        chatWindow.setSize(Math.max(curW, width), Math.max(curH, height), true)
+      }
+    }
+  })
+
   // Thread CRUD
   ipcMain.handle('get-threads', () => loadAllThreads())
   ipcMain.handle('save-thread', (_, thread) => { saveThread(thread); return { success: true } })
@@ -432,6 +477,77 @@ app.whenReady().then(() => {
     if (claudeClient) providers.push({ id: 'claude', name: 'Claude', model: 'Haiku 4.5' })
     if (geminiClient) providers.push({ id: 'gemini', name: 'Gemini', model: '2.5 Flash' })
     return providers
+  })
+
+  ipcMain.handle('get-api-keys', () => {
+    const anthropicKey = getEffectiveKey('anthropic')
+    const geminiKey = getEffectiveKey('gemini')
+    return {
+      ANTHROPIC_API_KEY: anthropicKey ? '••••' + anthropicKey.slice(-4) : '',
+      GEMINI_API_KEY: geminiKey ? '••••' + geminiKey.slice(-4) : '',
+      hasAnyKey: !!(anthropicKey || geminiKey),
+    }
+  })
+
+  ipcMain.handle('save-api-keys', async (_, keys) => {
+    const errors = []
+
+    // Validate Anthropic key
+    if (keys.ANTHROPIC_API_KEY) {
+      try {
+        const client = new Anthropic({ apiKey: keys.ANTHROPIC_API_KEY })
+        await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'hi' }],
+        })
+      } catch (e) {
+        if (e.status === 401 || e.message?.includes('auth') || e.message?.includes('API key')) {
+          errors.push('Anthropic key is invalid')
+        }
+        // Other errors (rate limit, network) mean the key format is likely valid
+      }
+    }
+
+    // Validate Gemini key
+    if (keys.GEMINI_API_KEY) {
+      try {
+        const client = new GoogleGenerativeAI(keys.GEMINI_API_KEY)
+        const model = client.getGenerativeModel({ model: 'gemini-2.5-flash' })
+        await model.generateContent('hi')
+      } catch (e) {
+        if (e.status === 400 || e.status === 403 || e.message?.includes('API key')) {
+          errors.push('Gemini key is invalid')
+        }
+      }
+    }
+
+    if (errors.length) {
+      return { success: false, error: errors.join('. ') + '. Please check and try again.' }
+    }
+
+    try {
+      const current = loadApiKeys()
+      if (keys.ANTHROPIC_API_KEY) current.ANTHROPIC_API_KEY = keys.ANTHROPIC_API_KEY
+      if (keys.GEMINI_API_KEY) current.GEMINI_API_KEY = keys.GEMINI_API_KEY
+      saveApiKeys(current)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('validate-invite-code', (_, code) => {
+    const validCode = process.env.INVITE_CODE
+    if (!validCode) return { success: false, error: 'Invite codes are not enabled' }
+    if (code.trim() !== validCode) return { success: false, error: 'Invalid invite code' }
+    // Use built-in keys
+    const keys = {}
+    if (process.env.ANTHROPIC_API_KEY) keys.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
+    if (process.env.GEMINI_API_KEY) keys.GEMINI_API_KEY = process.env.GEMINI_API_KEY
+    keys._invite = true
+    saveApiKeys(keys)
+    return { success: true }
   })
 
   // Image export
