@@ -158,20 +158,15 @@ function toggleSettingsWindow() {
 }
 
 function checkPermissions() {
-  const screen = systemPreferences.getMediaAccessStatus('screen')
-  // Accessibility check: try Electron API, fallback to assuming true
-  let accessibility = true
-  try {
-    const { isTrustedAccessibilityClient } = require('electron')
-    accessibility = isTrustedAccessibilityClient?.(false) ?? true
-  } catch {
-    // On newer Electron, check via systemPreferences or assume granted if shortcuts work
-    accessibility = globalShortcut.isRegistered('CommandOrControl+Shift+Z')
-  }
+  const screenStatus = systemPreferences.getMediaAccessStatus('screen')
+  // 'granted' or 'authorized' depending on macOS version
+  const screenOk = screenStatus === 'granted' || screenStatus === 'authorized' || screenStatus === 'not-determined'
+  // Accessibility: check if shortcuts registered successfully as proxy
+  const accessibilityOk = globalShortcut.isRegistered('CommandOrControl+Shift+Z')
 
   return {
-    screen: screen === 'granted',
-    accessibility,
+    screen: screenOk,
+    accessibility: accessibilityOk,
   }
 }
 
@@ -590,11 +585,21 @@ app.whenReady().then(() => {
   ipcMain.handle('check-permissions', () => checkPermissions())
 
   ipcMain.on('open-permission-settings', (_, type) => {
+    if (welcomeWindow && !welcomeWindow.isDestroyed()) {
+      welcomeWindow.setAlwaysOnTop(false)
+    }
     if (type === 'screen') {
       shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
     } else if (type === 'accessibility') {
       shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
     }
+    // Restore after a delay
+    setTimeout(() => {
+      if (welcomeWindow && !welcomeWindow.isDestroyed()) {
+        welcomeWindow.setAlwaysOnTop(true)
+        welcomeWindow.focus()
+      }
+    }, 1000)
   })
 
   ipcMain.on('welcome-done', () => {

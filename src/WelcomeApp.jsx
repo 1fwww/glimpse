@@ -2,12 +2,19 @@ import React, { useState, useEffect } from 'react'
 import './app.css'
 
 export default function WelcomeApp() {
-  const [step, setStep] = useState(0) // 0: welcome, 1: permissions, 2: shortcuts
+  const [step, setStep] = useState(() => {
+    const saved = localStorage.getItem('welcome-step')
+    return saved ? parseInt(saved, 10) : 0
+  })
   const [permissions, setPermissions] = useState({ screen: false, accessibility: false })
   const [checking, setChecking] = useState(false)
   const [triedShortcuts, setTriedShortcuts] = useState({ screenshot: false, chat: false })
   const [eyebrowWiggle, setEyebrowWiggle] = useState(false)
 
+  // Persist step across restarts
+  useEffect(() => {
+    localStorage.setItem('welcome-step', step.toString())
+  }, [step])
 
   const checkPermissions = async () => {
     setChecking(true)
@@ -31,6 +38,7 @@ export default function WelcomeApp() {
   const allGranted = permissions.screen && permissions.accessibility
 
   const handleGetStarted = () => {
+    localStorage.removeItem('welcome-step')
     window.electronAPI?.welcomeDone()
   }
 
