@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   validateInviteCode: (code) => ipcRenderer.invoke('validate-invite-code', code),
   openExternal: (url) => ipcRenderer.send('open-external', url),
   checkPermissions: () => ipcRenderer.invoke('check-permissions'),
+  requestScreenPermission: () => ipcRenderer.invoke('request-screen-permission'),
   openPermissionSettings: (type) => ipcRenderer.send('open-permission-settings', type),
   welcomeDone: () => ipcRenderer.send('welcome-done'),
   closeWelcome: () => ipcRenderer.send('close-welcome'),

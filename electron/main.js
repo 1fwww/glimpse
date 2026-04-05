@@ -93,7 +93,6 @@ function createWelcomeWindow() {
     frame: false,
     backgroundColor: '#0c121e',
     resizable: false,
-    alwaysOnTop: true,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -157,21 +156,21 @@ function toggleSettingsWindow() {
   settingsWindow.on('closed', () => { settingsWindow = null })
 }
 
-async function checkPermissions() {
-  let screenOk = false
+function checkPermissions() {
   const screenStatus = systemPreferences.getMediaAccessStatus('screen')
-  if (screenStatus === 'granted' || screenStatus === 'authorized') {
-    screenOk = true
-  } else {
-    // Fallback: try an actual capture to verify
-    try {
-      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
-      screenOk = sources.length > 0 && !sources[0].thumbnail.isEmpty()
-    } catch {}
-  }
+  const screenOk = screenStatus === 'granted' || screenStatus === 'authorized'
   const accessibilityOk = globalShortcut.isRegistered('CommandOrControl+Shift+Z')
-
   return { screen: screenOk, accessibility: accessibilityOk }
+}
+
+async function requestScreenPermission() {
+  let granted = false
+  try {
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
+    granted = sources.length > 0 && !sources[0].thumbnail.isEmpty()
+  } catch {}
+  if (welcomeWindow && !welcomeWindow.isDestroyed()) welcomeWindow.focus()
+  return { granted }
 }
 
 function createChatWindow(opts = {}) {
@@ -587,23 +586,14 @@ app.whenReady().then(() => {
 
   // Welcome / onboarding
   ipcMain.handle('check-permissions', () => checkPermissions())
+  ipcMain.handle('request-screen-permission', () => requestScreenPermission())
 
   ipcMain.on('open-permission-settings', (_, type) => {
-    if (welcomeWindow && !welcomeWindow.isDestroyed()) {
-      welcomeWindow.setAlwaysOnTop(false)
-    }
     if (type === 'screen') {
       shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
     } else if (type === 'accessibility') {
       shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
     }
-    // Restore after a delay
-    setTimeout(() => {
-      if (welcomeWindow && !welcomeWindow.isDestroyed()) {
-        welcomeWindow.setAlwaysOnTop(true)
-        welcomeWindow.focus()
-      }
-    }, 1000)
   })
 
   ipcMain.on('welcome-done', () => {

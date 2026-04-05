@@ -94,7 +94,10 @@ export default function WelcomeApp() {
                   <div className="perm-why">Required to capture screenshots</div>
                 </div>
                 {!permissions.screen && (
-                  <button className="perm-grant" onClick={() => window.electronAPI?.openPermissionSettings('screen')}>
+                  <button className="perm-grant" onClick={async () => {
+                    const result = await window.electronAPI?.requestScreenPermission()
+                    if (result?.granted) checkPermissions()
+                  }}>
                     Grant
                   </button>
                 )}
