@@ -1,0 +1,61 @@
+{
+  "name": "glimpse",
+  "version": "0.1.0",
+  "description": "Screenshot + AI chat tool for macOS",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron . --dev\"",
+    "start": "electron .",
+    "pack": "vite build && electron-builder --mac --dir",
+    "dist": "vite build && electron-builder --mac"
+  },
+  "keywords": [
+    "screenshot",
+    "ai",
+    "electron",
+    "macos"
+  ],
+  "author": "Yifu Wu",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "electron": "^41.1.1",
+    "electron-builder": "^26.8.1",
+    "vite": "^8.0.3",
+    "wait-on": "^8.0.5"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^17.4.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "build": {
+    "appId": "com.yifuwu.glimpse",
+    "productName": "Glimpse",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg",
+      "icon": "build/icon.icns"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "node_modules/**/*",
+      "!node_modules/*/{CHANGELOG.md,README.md,readme.md,test,__tests__,tests,*.d.ts}"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/get-windows",
+        "to": "get-windows"
+      }
+    ]
+  }
+}
