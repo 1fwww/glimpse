@@ -201,7 +201,8 @@ export default function App() {
       const result = await window.electronAPI?.saveImage(img)
       if (result?.success) {
         setSaveFeedback(true)
-        window.electronAPI?.showToast('Screenshot saved')
+        const folder = result.filePath?.split('/').slice(-2, -1)[0]
+        window.electronAPI?.showToast(folder ? `Saved to ${folder}` : 'Saved')
         window.electronAPI?.closeOverlay()
       }
     }

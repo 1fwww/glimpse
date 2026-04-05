@@ -618,7 +618,7 @@ export default function ChatPanel({
             <span className="glimpse-icon-fixed glimpse-loading">
               <GlimpseIcon size={32} />
             </span>
-            <span>Key added. Welcome to Glimpse Chat!</span>
+            <span>Key added. Happy chatting!</span>
           </div>
         ) : (
           <>

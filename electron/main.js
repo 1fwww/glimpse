@@ -1,6 +1,17 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, screen, clipboard, nativeImage, dialog, shell } = require('electron')
+const { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, screen, clipboard, nativeImage, dialog, shell, systemPreferences, Tray, Menu } = require('electron')
 const path = require('path')
 const fs = require('fs')
+
+// Crash log for debugging production issues
+const CRASH_LOG = path.join(app.getPath('userData'), 'crash.log')
+process.on('uncaughtException', (err) => {
+  fs.writeFileSync(CRASH_LOG, `${new Date().toISOString()}\n${err.stack || err}\n`, 'utf8')
+  console.error('[Glimpse] CRASH:', err)
+  process.exit(1)
+})
+
+try {
+
 const { execFile } = require('child_process')
 const Anthropic = require('@anthropic-ai/sdk')
 const { GoogleGenerativeAI } = require('@google/generative-ai')
@@ -17,6 +28,7 @@ const GET_WINDOWS_BIN = isDev
 const MAX_THREADS = 5
 const THREADS_DIR = path.join(app.getPath('userData'), 'threads')
 const KEYS_PATH = path.join(app.getPath('userData'), 'api-keys.json')
+const PREFS_PATH = path.join(app.getPath('userData'), 'preferences.json')
 
 // ── API key management ──
 
@@ -61,10 +73,106 @@ function closeChatWindow() {
   }
 }
 
-function getChatOnlyURL() {
+function getURL(hash) {
   return isDev
-    ? `http://localhost:${DEV_PORT}#chat-only`
-    : `file://${path.join(__dirname, '..', 'dist', 'index.html')}#chat-only`
+    ? `http://localhost:${DEV_PORT}#${hash}`
+    : `file://${path.join(__dirname, '..', 'dist', 'index.html')}#${hash}`
+}
+
+function getChatOnlyURL() {
+  return getURL('chat-only')
+}
+
+const ONBOARDING_PATH = path.join(app.getPath('userData'), 'onboarding-done')
+let welcomeWindow = null
+let tray = null
+
+function createWelcomeWindow() {
+  welcomeWindow = new BrowserWindow({
+    width: 420, height: 480,
+    frame: false,
+    backgroundColor: '#0c121e',
+    resizable: false,
+    alwaysOnTop: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  welcomeWindow.loadURL(getURL('welcome'))
+  welcomeWindow.webContents.on('did-finish-load', () => {
+    console.log('[Glimpse] Welcome window loaded')
+    welcomeWindow.show()
+    welcomeWindow.focus()
+  })
+  welcomeWindow.on('closed', () => {
+    console.log('[Glimpse] Welcome window closed')
+    welcomeWindow = null
+  })
+}
+
+// ── Preferences ──
+
+function loadPreferences() {
+  try {
+    return JSON.parse(fs.readFileSync(PREFS_PATH, 'utf8'))
+  } catch { return { launchAtLogin: false, saveLocation: 'ask', savePath: '' } }
+}
+
+function savePreference(key, value) {
+  const prefs = loadPreferences()
+  prefs[key] = value
+  fs.writeFileSync(PREFS_PATH, JSON.stringify(prefs), 'utf8')
+  if (key === 'launchAtLogin') {
+    app.setLoginItemSettings({ openAtLogin: value })
+  }
+}
+
+// ── Settings window ──
+
+let settingsWindow = null
+
+function toggleSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.close()
+    settingsWindow = null
+    return
+  }
+  settingsWindow = new BrowserWindow({
+    width: 420, height: 520,
+    frame: false,
+    backgroundColor: '#0c121e',
+    resizable: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  settingsWindow.setAlwaysOnTop(true, 'screen-saver')
+  settingsWindow.loadURL(getURL('settings'))
+  settingsWindow.on('closed', () => { settingsWindow = null })
+}
+
+function checkPermissions() {
+  const screen = systemPreferences.getMediaAccessStatus('screen')
+  // Accessibility check: try Electron API, fallback to assuming true
+  let accessibility = true
+  try {
+    const { isTrustedAccessibilityClient } = require('electron')
+    accessibility = isTrustedAccessibilityClient?.(false) ?? true
+  } catch {
+    // On newer Electron, check via systemPreferences or assume granted if shortcuts work
+    accessibility = globalShortcut.isRegistered('CommandOrControl+Shift+Z')
+  }
+  console.log('[Glimpse] permissions — screen:', screen, 'accessibility:', accessibility)
+  return {
+    screen: screen === 'granted',
+    accessibility,
+  }
 }
 
 function createChatWindow(opts = {}) {
@@ -258,10 +366,22 @@ async function chatWithProvider(messages, provider) {
 // ── App lifecycle ──
 
 app.whenReady().then(() => {
+  console.log('[Glimpse] App ready')
+  console.log('[Glimpse] isDev:', isDev)
   fs.mkdirSync(THREADS_DIR, { recursive: true })
 
+  // Show welcome on first launch
+  if (!fs.existsSync(ONBOARDING_PATH)) {
+    createWelcomeWindow()
+  }
+
   // Cmd+Shift+Z → screenshot mode
-  globalShortcut.register('CommandOrControl+Shift+Z', async () => {
+  const r1 = globalShortcut.register('CommandOrControl+Shift+Z', async () => {
+    console.log('[Glimpse] Cmd+Shift+Z triggered')
+    if (welcomeWindow && !welcomeWindow.isDestroyed()) {
+      welcomeWindow.webContents.send('shortcut-tried', 'screenshot')
+      return
+    }
     closeChatWindow()
 
     const activeDisplay = getActiveDisplay()
@@ -309,8 +429,15 @@ app.whenReady().then(() => {
     }
   })
 
+  console.log('[Glimpse] Shortcut Cmd+Shift+Z registered:', r1)
+
   // Cmd+Shift+C → standalone chat (grab selected text)
-  globalShortcut.register('CommandOrControl+Shift+C', async () => {
+  const r2 = globalShortcut.register('CommandOrControl+Shift+C', async () => {
+    console.log('[Glimpse] Cmd+Shift+C triggered')
+    if (welcomeWindow && !welcomeWindow.isDestroyed()) {
+      welcomeWindow.webContents.send('shortcut-tried', 'chat')
+      return
+    }
     if (overlayWindow) { overlayWindow.destroy(); overlayWindow = null }
 
     if (chatWindow && !chatWindow.isDestroyed()) {
@@ -342,11 +469,26 @@ app.whenReady().then(() => {
     createChatWindow({ selectedText })
     chatWindowCreating = false
   })
+  console.log('[Glimpse] Shortcut Cmd+Shift+C registered:', r2)
+
+  // ── Menu bar tray ──
+  // TODO: Tray icon — needs debugging on macOS 26
+  // tray = new Tray(nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.icns')).resize({ width: 18, height: 18 }))
+  // tray.setToolTip('Glimpse')
+  // tray.setContextMenu(Menu.buildFromTemplate([
+  //   { label: 'Screenshot', accelerator: 'CmdOrCtrl+Shift+Z', enabled: false },
+  //   { label: 'Quick chat', accelerator: 'CmdOrCtrl+Shift+C', enabled: false },
+  //   { type: 'separator' },
+  //   { label: 'Settings', click: () => toggleSettingsWindow() },
+  //   { type: 'separator' },
+  //   { label: 'Quit Glimpse', click: () => app.quit() },
+  // ]))
 
   // ── IPC handlers ──
 
   ipcMain.on('close-overlay', () => {
     if (overlayWindow) { overlayWindow.destroy(); overlayWindow = null }
+    if (settingsWindow && !settingsWindow.isDestroyed()) { settingsWindow.close(); settingsWindow = null }
   })
 
   ipcMain.on('close-chat-window', () => {
@@ -437,6 +579,63 @@ app.whenReady().then(() => {
     shell.openExternal(url)
   })
 
+  // Welcome / onboarding
+  ipcMain.handle('check-permissions', () => checkPermissions())
+
+  ipcMain.on('open-permission-settings', (_, type) => {
+    if (type === 'screen') {
+      shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
+    } else if (type === 'accessibility') {
+      shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
+    }
+  })
+
+  ipcMain.on('welcome-done', () => {
+    fs.writeFileSync(ONBOARDING_PATH, Date.now().toString(), 'utf8')
+    if (welcomeWindow && !welcomeWindow.isDestroyed()) {
+      welcomeWindow.close()
+      welcomeWindow = null
+    }
+  })
+
+  // Settings
+  ipcMain.on('open-settings', () => { toggleSettingsWindow() })
+
+  ipcMain.handle('get-preferences', () => loadPreferences())
+
+  ipcMain.handle('set-preference', (_, key, value) => {
+    savePreference(key, value)
+    return { success: true }
+  })
+
+  ipcMain.handle('delete-api-key', (_, provider) => {
+    const keys = loadApiKeys()
+    if (provider === 'anthropic') delete keys.ANTHROPIC_API_KEY
+    if (provider === 'gemini') delete keys.GEMINI_API_KEY
+    saveApiKeys(keys)
+    return { success: true }
+  })
+
+  ipcMain.handle('select-folder', async () => {
+    if (overlayWindow) overlayWindow.setAlwaysOnTop(false)
+    if (settingsWindow) settingsWindow.setAlwaysOnTop(false)
+    const prefs = loadPreferences()
+    const result = await dialog.showOpenDialog({
+      defaultPath: prefs.savePath || undefined,
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+      overlayWindow.focus()
+    }
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.setAlwaysOnTop(true, 'screen-saver')
+      settingsWindow.focus()
+    }
+    if (result.canceled || !result.filePaths.length) return null
+    return result.filePaths[0]
+  })
+
   ipcMain.on('resize-chat-window', (_, { width, height }) => {
     if (chatWindow && !chatWindow.isDestroyed()) {
       const [curW, curH] = chatWindow.getSize()
@@ -482,12 +681,14 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('get-api-keys', () => {
+    const stored = loadApiKeys()
     const anthropicKey = getEffectiveKey('anthropic')
     const geminiKey = getEffectiveKey('gemini')
     return {
       ANTHROPIC_API_KEY: anthropicKey ? '••••' + anthropicKey.slice(-4) : '',
       GEMINI_API_KEY: geminiKey ? '••••' + geminiKey.slice(-4) : '',
       hasAnyKey: !!(anthropicKey || geminiKey),
+      isInvite: !!stored._invite,
     }
   })
 
@@ -565,14 +766,28 @@ app.whenReady().then(() => {
 
   ipcMain.handle('save-image', async (_, dataUrl) => {
     try {
+      const prefs = loadPreferences()
+      const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '')
+      const fileName = `glimpse-${Date.now()}.png`
+
+      // Auto-save to fixed folder if configured
+      if (prefs.saveLocation === 'folder' && prefs.savePath) {
+        try {
+          const autoPath = path.join(prefs.savePath, fileName)
+          fs.writeFileSync(autoPath, Buffer.from(base64, 'base64'))
+          return { success: true, filePath: autoPath }
+        } catch {
+          // Folder invalid, fall through to dialog
+        }
+      }
+
       if (overlayWindow) overlayWindow.setAlwaysOnTop(false)
       const { canceled, filePath } = await dialog.showSaveDialog({
-        defaultPath: `screenshot-${Date.now()}.png`,
+        defaultPath: fileName,
         filters: [{ name: 'Images', extensions: ['png', 'jpg'] }],
       })
       if (overlayWindow) { overlayWindow.setAlwaysOnTop(true, 'screen-saver'); overlayWindow.focus() }
       if (canceled || !filePath) return { success: false }
-      const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '')
       fs.writeFileSync(filePath, Buffer.from(base64, 'base64'))
       return { success: true, filePath }
     } catch (error) {
@@ -584,3 +799,8 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => { globalShortcut.unregisterAll() })
 app.on('window-all-closed', () => {})
+
+} catch (err) {
+  fs.writeFileSync(CRASH_LOG, `${new Date().toISOString()} INIT\n${err.stack || err}\n`, 'utf8')
+  console.error('[Glimpse] INIT CRASH:', err)
+}
