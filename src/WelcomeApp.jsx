@@ -123,6 +123,11 @@ export default function WelcomeApp() {
             <button className="welcome-btn" onClick={() => setStep(2)} disabled={!allGranted}>
               {allGranted ? 'Continue' : 'Waiting for permissions...'}
             </button>
+            {!allGranted && (
+              <button className="welcome-skip-link" onClick={() => setStep(2)}>
+                Already granted? Continue anyway
+              </button>
+            )}
           </div>
         )}
 

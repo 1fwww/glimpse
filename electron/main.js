@@ -157,17 +157,21 @@ function toggleSettingsWindow() {
   settingsWindow.on('closed', () => { settingsWindow = null })
 }
 
-function checkPermissions() {
+async function checkPermissions() {
+  let screenOk = false
   const screenStatus = systemPreferences.getMediaAccessStatus('screen')
-  // 'granted' or 'authorized' depending on macOS version
-  const screenOk = screenStatus === 'granted' || screenStatus === 'authorized' || screenStatus === 'not-determined'
-  // Accessibility: check if shortcuts registered successfully as proxy
+  if (screenStatus === 'granted' || screenStatus === 'authorized') {
+    screenOk = true
+  } else {
+    // Fallback: try an actual capture to verify
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
+      screenOk = sources.length > 0 && !sources[0].thumbnail.isEmpty()
+    } catch {}
+  }
   const accessibilityOk = globalShortcut.isRegistered('CommandOrControl+Shift+Z')
 
-  return {
-    screen: screenOk,
-    accessibility: accessibilityOk,
-  }
+  return { screen: screenOk, accessibility: accessibilityOk }
 }
 
 function createChatWindow(opts = {}) {

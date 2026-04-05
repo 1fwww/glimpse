@@ -2018,6 +2018,21 @@
   line-height: 1.4;
 }
 
+.welcome-skip-link {
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.welcome-skip-link:hover {
+  color: var(--text-secondary);
+}
+
 .welcome-settings-hint {
   margin: 0;
   font-family: var(--font-display);
