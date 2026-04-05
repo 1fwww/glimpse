@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   welcomeDone: () => ipcRenderer.send('welcome-done'),
   onShortcutTried: (callback) => ipcRenderer.on('shortcut-tried', (_, type) => callback(type)),
   openSettings: () => ipcRenderer.send('open-settings'),
+  closeSettings: () => ipcRenderer.send('close-settings'),
   getPreferences: () => ipcRenderer.invoke('get-preferences'),
   setPreference: (key, value) => ipcRenderer.invoke('set-preference', key, value),
   deleteApiKey: (provider) => ipcRenderer.invoke('delete-api-key', provider),

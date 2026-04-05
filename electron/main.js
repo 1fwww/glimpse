@@ -600,6 +600,9 @@ app.whenReady().then(() => {
 
   // Settings
   ipcMain.on('open-settings', () => { toggleSettingsWindow() })
+  ipcMain.on('close-settings', () => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) { settingsWindow.close(); settingsWindow = null }
+  })
 
   ipcMain.handle('get-preferences', () => loadPreferences())
 
@@ -612,6 +615,11 @@ app.whenReady().then(() => {
     const keys = loadApiKeys()
     if (provider === 'anthropic') delete keys.ANTHROPIC_API_KEY
     if (provider === 'gemini') delete keys.GEMINI_API_KEY
+    if (provider === 'invite') {
+      delete keys._invite
+      delete keys.ANTHROPIC_API_KEY
+      delete keys.GEMINI_API_KEY
+    }
     saveApiKeys(keys)
     return { success: true }
   })

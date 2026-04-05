@@ -8,14 +8,6 @@ export default function WelcomeApp() {
   const [triedShortcuts, setTriedShortcuts] = useState({ screenshot: false, chat: false })
   const [eyebrowWiggle, setEyebrowWiggle] = useState(false)
 
-  useEffect(() => {
-    const times = [500, 3500, 6500]
-    const timers = times.map(t => setTimeout(() => {
-      setEyebrowWiggle(true)
-      setTimeout(() => setEyebrowWiggle(false), 1200)
-    }, t))
-    return () => timers.forEach(clearTimeout)
-  }, [])
 
   const checkPermissions = async () => {
     setChecking(true)

@@ -64,8 +64,7 @@ export default function SettingsApp() {
   }
 
   const handleClose = () => {
-    window.electronAPI?.closeChatWindow?.()
-    window.close()
+    window.electronAPI?.closeSettings?.()
   }
 
   useEffect(() => {
@@ -86,9 +85,16 @@ export default function SettingsApp() {
         <div className="settings-section">
           <h2 className="settings-section-title">API Keys</h2>
 
-          {apiKeys.isInvite ? (
-            <div className="settings-invite-badge">Using invite code</div>
-          ) : (
+          {apiKeys.isInvite && (
+            <div className="settings-invite-row">
+              <span className="settings-invite-badge">Using invite code</span>
+              <button className="settings-btn-sm" onClick={async () => {
+                await window.electronAPI?.deleteApiKey('invite')
+                loadData()
+              }}>Use my own keys</button>
+            </div>
+          )}
+          {!apiKeys.isInvite && (
             <>
               {/* Anthropic */}
               <div className="settings-key-row">

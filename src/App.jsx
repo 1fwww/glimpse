@@ -252,10 +252,62 @@ export default function App() {
     return null
   }, [windowBounds])
 
+  const [isMovingSelection, setIsMovingSelection] = useState(false)
+  const [isResizingSelection, setIsResizingSelection] = useState(false)
+  const moveStart = useRef(null)
+  const resizeEdge = useRef(null)
+
+  const getSelectionEdge = (e) => {
+    if (!selection) return null
+    const margin = 6
+    const { x, y, w, h } = selection
+    const cx = e.clientX, cy = e.clientY
+    const onLeft = Math.abs(cx - x) < margin
+    const onRight = Math.abs(cx - (x + w)) < margin
+    const onTop = Math.abs(cy - y) < margin
+    const onBottom = Math.abs(cy - (y + h)) < margin
+    const inX = cx >= x - margin && cx <= x + w + margin
+    const inY = cy >= y - margin && cy <= y + h + margin
+
+    if (onTop && onLeft && inX && inY) return 'nw'
+    if (onTop && onRight && inX && inY) return 'ne'
+    if (onBottom && onLeft && inX && inY) return 'sw'
+    if (onBottom && onRight && inX && inY) return 'se'
+    if (onTop && inX) return 'n'
+    if (onBottom && inX) return 's'
+    if (onLeft && inY) return 'w'
+    if (onRight && inY) return 'e'
+    return null
+  }
+
+  const getEdgeCursor = (edge) => {
+    const map = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', n: 'ns-resize', s: 'ns-resize', w: 'ew-resize', e: 'ew-resize' }
+    return map[edge] || 'default'
+  }
+
   const handleMouseDown = (e) => {
     if (e.target.closest('.chat-panel')) return
     if (e.target.closest('.edit-toolbar')) return
     if (e.target.closest('.drawing-canvas')) return
+
+    // Check resize edges first
+    if (selection && !activeTool && annotations.length === 0) {
+      const edge = getSelectionEdge(e)
+      if (edge) {
+        setIsResizingSelection(true)
+        resizeEdge.current = edge
+        moveStart.current = { x: e.clientX, y: e.clientY, sel: { ...selection } }
+        return
+      }
+    }
+
+    // If clicking inside existing selection, start moving it
+    if (selection && e.clientX >= selection.x && e.clientX <= selection.x + selection.w
+        && e.clientY >= selection.y && e.clientY <= selection.y + selection.h) {
+      setIsMovingSelection(true)
+      moveStart.current = { x: e.clientX, y: e.clientY, sel: { ...selection } }
+      return
+    }
 
     // Remember if chat was open before re-selecting
     chatWasOpenRef.current = chatVisible && !chatMinimized
@@ -274,6 +326,60 @@ export default function App() {
   }
 
   const handleMouseMove = (e) => {
+    // Resizing existing selection
+    if (isResizingSelection && moveStart.current) {
+      const dx = e.clientX - moveStart.current.x
+      const dy = e.clientY - moveStart.current.y
+      const s = moveStart.current.sel
+      const edge = resizeEdge.current
+      let { x, y, w, h } = s
+
+      const moveTop = edge === 'n' || edge === 'nw' || edge === 'ne'
+      const moveBottom = edge === 's' || edge === 'sw' || edge === 'se'
+      const moveLeft = edge === 'w' || edge === 'nw' || edge === 'sw'
+      const moveRight = edge === 'e' || edge === 'ne' || edge === 'se'
+
+      if (moveTop) { y = s.y + dy; h = s.h - dy }
+      if (moveBottom) { h = s.h + dy }
+      if (moveLeft) { x = s.x + dx; w = s.w - dx }
+      if (moveRight) { w = s.w + dx }
+
+      if (w < 20) { w = 20; if (moveLeft) x = s.x + s.w - 20 }
+      if (h < 20) { h = 20; if (moveTop) y = s.y + s.h - 20 }
+
+      setSelection({ x, y, w, h })
+      return
+    }
+
+    // Moving existing selection
+    if (isMovingSelection && moveStart.current) {
+      const dx = e.clientX - moveStart.current.x
+      const dy = e.clientY - moveStart.current.y
+      const s = moveStart.current.sel
+      setSelection({
+        x: Math.max(0, Math.min(s.x + dx, window.innerWidth - s.w)),
+        y: Math.max(0, Math.min(s.y + dy, window.innerHeight - s.h)),
+        w: s.w,
+        h: s.h,
+      })
+      return
+    }
+
+    // Update cursor when hovering near selection edges
+    if (selection && !activeTool && annotations.length === 0 && !isSelecting) {
+      const edge = getSelectionEdge(e)
+      if (edge) {
+        document.body.style.cursor = getEdgeCursor(edge)
+        return
+      } else if (e.clientX >= selection.x && e.clientX <= selection.x + selection.w
+          && e.clientY >= selection.y && e.clientY <= selection.y + selection.h) {
+        document.body.style.cursor = 'move'
+        return
+      } else {
+        document.body.style.cursor = ''
+      }
+    }
+
     if (isSelecting && startPos) {
       const dx = Math.abs(e.clientX - startPos.x)
       const dy = Math.abs(e.clientY - startPos.y)
@@ -296,6 +402,26 @@ export default function App() {
   const handleMouseUp = (e) => {
     if (e.target.closest('.edit-toolbar')) return
     if (e.target.closest('.chat-panel')) return
+
+    // Finish resizing selection
+    if (isResizingSelection) {
+      setIsResizingSelection(false)
+      resizeEdge.current = null
+      moveStart.current = null
+      document.body.style.cursor = ''
+      if (selection) cropSelection(selection, screenImage)
+      return
+    }
+
+    // Finish moving selection
+    if (isMovingSelection) {
+      setIsMovingSelection(false)
+      moveStart.current = null
+      document.body.style.cursor = ''
+      if (selection) cropSelection(selection, screenImage)
+      return
+    }
+
     if (!isSelecting) return
     setIsSelecting(false)
     setStartPos(null)
@@ -400,7 +526,7 @@ export default function App() {
   return (
     <div
       ref={overlayRef}
-      className={`overlay ${isExiting ? 'overlay-exiting' : ''}`}
+      className={`overlay ${isExiting ? 'overlay-exiting' : ''} ${isMovingSelection ? 'overlay-moving' : ''} ${isResizingSelection ? 'overlay-resizing' : ''}`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -430,6 +556,22 @@ export default function App() {
         )}
         {!selection && !hoveredWindow && <div className="full-dim" />}
       </div>
+
+      {selection && selection.w > 0 && selection.h > 0 && !activeTool && annotations.length === 0 && (
+        <div
+          className="selection-move-handle"
+          style={{ left: selection.x, top: selection.y, width: selection.w, height: selection.h }}
+        >
+          <div className="sel-handle sel-nw" />
+          <div className="sel-handle sel-n" />
+          <div className="sel-handle sel-ne" />
+          <div className="sel-handle sel-w" />
+          <div className="sel-handle sel-e" />
+          <div className="sel-handle sel-sw" />
+          <div className="sel-handle sel-s" />
+          <div className="sel-handle sel-se" />
+        </div>
+      )}
 
       {!selection && hoveredWindow && (
         <div
