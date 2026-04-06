@@ -26,7 +26,7 @@ Your work keeps flowing — just capture, ask, and move on.
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+Shift+Z` | Screenshot — capture, annotate, ask |
-| `Cmd+Shift+C` | Quick chat — grabs selected text |
+| `Cmd+Shift+X` | Quick chat — grabs selected text |
 | `Esc` | Close / dismiss |
 
 ## Setup

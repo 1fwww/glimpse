@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, screen, clipboard, nativeImage, dialog, shell, systemPreferences, Tray, Menu } = require('electron')
+const { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, screen, clipboard, nativeImage, dialog, shell, systemPreferences } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -90,7 +90,6 @@ function getChatOnlyURL() {
 
 const ONBOARDING_PATH = path.join(app.getPath('userData'), 'onboarding-done')
 let welcomeWindow = null
-let tray = null
 
 function createWelcomeWindow() {
   welcomeWindow = new BrowserWindow({
@@ -186,32 +185,22 @@ function toggleSettingsWindow() {
     return
   }
   // Position settings to avoid overlapping other windows
+  function positionBeside(px, py, pw) {
+    const display = screen.getDisplayNearestPoint({ x: px, y: py })
+    const rightSpace = display.bounds.x + display.bounds.width - (px + pw)
+    return rightSpace >= 440
+      ? { x: px + pw + 20, y: py }
+      : { x: Math.max(display.bounds.x, px - 440), y: py }
+  }
+
   let settingsX, settingsY
   const parentWindow = chatWindow || homeWindow
   if (parentWindow && !parentWindow.isDestroyed()) {
     const [px, py] = parentWindow.getPosition()
     const [pw] = parentWindow.getSize()
-    const display = screen.getDisplayNearestPoint({ x: px, y: py })
-    const rightSpace = display.bounds.x + display.bounds.width - (px + pw)
-    if (rightSpace >= 440) {
-      settingsX = px + pw + 20
-      settingsY = py
-    } else {
-      settingsX = Math.max(display.bounds.x, px - 440)
-      settingsY = py
-    }
+    ;({ x: settingsX, y: settingsY } = positionBeside(px, py, pw))
   } else if (settingsPanelHint) {
-    // Overlay mode — position relative to chat panel
-    const { x: px, y: py, w: pw } = settingsPanelHint
-    const display = screen.getDisplayNearestPoint({ x: px, y: py })
-    const rightSpace = display.bounds.x + display.bounds.width - (px + pw)
-    if (rightSpace >= 440) {
-      settingsX = px + pw + 20
-      settingsY = py
-    } else {
-      settingsX = Math.max(display.bounds.x, px - 440)
-      settingsY = py
-    }
+    ;({ x: settingsX, y: settingsY } = positionBeside(settingsPanelHint.x, settingsPanelHint.y, settingsPanelHint.w))
   } else {
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
     settingsX = display.bounds.x + display.bounds.width - 450
@@ -268,6 +257,9 @@ function createChatWindow(opts = {}) {
     },
   })
 
+  chatWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  setTimeout(() => { if (chatWindow && !chatWindow.isDestroyed()) chatWindow.setVisibleOnAllWorkspaces(false) }, 200)
+
   chatWindow.loadURL(getChatOnlyURL())
 
   chatWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -289,7 +281,16 @@ function createChatWindow(opts = {}) {
       if (threadData) chatWindow.webContents.send('load-thread-data', threadData)
       if (croppedImage) chatWindow.webContents.send('set-cropped-image', croppedImage)
       if (selectedText) chatWindow.webContents.send('text-context', selectedText)
-      if (!onReady) chatWindow.show()
+      if (!onReady) {
+        if (!alwaysOnTop) chatWindow.setAlwaysOnTop(true)
+        chatWindow.show()
+        chatWindow.focus()
+        if (!alwaysOnTop) {
+          setTimeout(() => {
+            if (chatWindow && !chatWindow.isDestroyed()) chatWindow.setAlwaysOnTop(false)
+          }, 500)
+        }
+      }
     }, 100)
   })
 
@@ -489,9 +490,11 @@ async function chatWithOpenAI(messages, modelId) {
 }
 
 async function chatWithProvider(messages, provider, modelId) {
-  if (provider === 'claude') return chatWithClaude(messages, modelId || MODELS.claude[0].id)
-  if (provider === 'gemini') return chatWithGemini(messages, modelId || MODELS.gemini[0].id)
-  if (provider === 'openai') return chatWithOpenAI(messages, modelId || MODELS.openai[0].id)
+  // Strip extra fields (like 'model') that APIs don't accept
+  const cleanMessages = messages.map(({ role, content }) => ({ role, content }))
+  if (provider === 'claude') return chatWithClaude(cleanMessages, modelId || MODELS.claude[0].id)
+  if (provider === 'gemini') return chatWithGemini(cleanMessages, modelId || MODELS.gemini[0].id)
+  if (provider === 'openai') return chatWithOpenAI(cleanMessages, modelId || MODELS.openai[0].id)
   throw new Error('Unknown provider: ' + provider)
 }
 
@@ -541,8 +544,10 @@ app.whenReady().then(() => {
       createWelcomeWindow()
       return
     }
+    const hadHome = homeWindow && !homeWindow.isDestroyed()
     closeHomeWindow()
     closeChatWindow()
+    if (hadHome) await new Promise(r => setTimeout(r, 150))
 
     const activeDisplay = getActiveDisplay()
     const displayInfo = {
@@ -586,7 +591,7 @@ app.whenReady().then(() => {
       overlayWindow.webContents.send('screen-captured', capture.dataUrl, windowBounds, displayInfo, offset)
       overlayWindow.show()
       overlayWindow.focus()
-      globalShortcut.register('Escape', closeOverlay)
+      if (!globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', closeOverlay)
       setTimeout(() => { if (overlayWindow) overlayWindow.setVisibleOnAllWorkspaces(false) }, 100)
     } else {
       createOverlayWindow(activeDisplay)
@@ -596,7 +601,7 @@ app.whenReady().then(() => {
         overlayWindow.webContents.send('screen-captured', capture.dataUrl, windowBounds, displayInfo, offset)
         overlayWindow.show()
         overlayWindow.focus()
-        globalShortcut.register('Escape', closeOverlay)
+        if (!globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', closeOverlay)
         setTimeout(() => { if (overlayWindow) overlayWindow.setVisibleOnAllWorkspaces(false) }, 100)
       })
     }
@@ -604,11 +609,10 @@ app.whenReady().then(() => {
     // Pre-warm next overlay
     setTimeout(prewarmOverlay, 1000)
   })
+  if (!r1) console.warn('[Glimpse] Failed to register Cmd+Shift+Z — shortcut may be in use by another app')
 
-
-
-  // Cmd+Shift+C → standalone chat (grab selected text)
-  const r2 = globalShortcut.register('CommandOrControl+Shift+C', async () => {
+  // Cmd+Shift+X → standalone chat (grab selected text)
+  const r2 = globalShortcut.register('CommandOrControl+Shift+X', async () => {
 
     if (welcomeWindow && !welcomeWindow.isDestroyed()) {
       welcomeWindow.webContents.send('shortcut-tried', 'chat')
@@ -622,12 +626,40 @@ app.whenReady().then(() => {
     if (overlayWindow) { overlayWindow.destroy(); overlayWindow = null }
 
     if (chatWindow && !chatWindow.isDestroyed()) {
+      // Bring chat window to current Space (including fullscreen)
+      chatWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
       chatWindow.focus()
+      setTimeout(() => {
+        if (chatWindow && !chatWindow.isDestroyed()) chatWindow.setVisibleOnAllWorkspaces(false)
+      }, 100)
+
+      // Grab selected text even for existing window
+      await new Promise(r => setTimeout(r, 100))
+      const savedClip = clipboard.readText()
+      clipboard.writeText('')
+      try {
+        require('child_process').execSync('osascript -e \'tell application "System Events" to keystroke "c" using command down\'', { timeout: 1000 })
+      } catch {}
+      let selText = ''
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 30))
+        selText = clipboard.readText()
+        if (selText) break
+      }
+      clipboard.writeText(savedClip)
+      if (selText) chatWindow.webContents.send('text-context', selText)
+      const wasPinned = chatWindow.isAlwaysOnTop()
+      chatWindow.setAlwaysOnTop(true)
+      chatWindow.focus()
+      if (!wasPinned) setTimeout(() => { if (chatWindow && !chatWindow.isDestroyed()) chatWindow.setAlwaysOnTop(false) }, 500)
       return
     }
 
     if (chatWindowCreating) return
     chatWindowCreating = true
+
+    // Wait for shortcut keys to release before simulating Cmd+C
+    await new Promise(r => setTimeout(r, 100))
 
     // Grab selected text: simulate Cmd+C, poll clipboard
     const savedClipboard = clipboard.readText()
@@ -650,20 +682,8 @@ app.whenReady().then(() => {
     createChatWindow({ selectedText })
     chatWindowCreating = false
   })
+  if (!r2) console.warn('[Glimpse] Failed to register Cmd+Shift+X — shortcut may be in use by another app')
 
-
-  // ── Menu bar tray ──
-  // TODO: Tray icon — needs debugging on macOS 26
-  // tray = new Tray(nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.icns')).resize({ width: 18, height: 18 }))
-  // tray.setToolTip('Glimpse')
-  // tray.setContextMenu(Menu.buildFromTemplate([
-  //   { label: 'Screenshot', accelerator: 'CmdOrCtrl+Shift+Z', enabled: false },
-  //   { label: 'Quick chat', accelerator: 'CmdOrCtrl+Shift+C', enabled: false },
-  //   { type: 'separator' },
-  //   { label: 'Settings', click: () => toggleSettingsWindow() },
-  //   { type: 'separator' },
-  //   { label: 'Quit Glimpse', click: () => app.quit() },
-  // ]))
 
   // ── IPC handlers ──
 
@@ -833,7 +853,7 @@ app.whenReady().then(() => {
     if (wasOverlayOnTop) overlayWindow.setAlwaysOnTop(false)
     toggleSettingsWindow()
     if (settingsWindow) {
-      settingsWindow.on('closed', () => {
+      settingsWindow.once('closed', () => {
         if (overlayWindow && !overlayWindow.isDestroyed()) {
           overlayWindow.setAlwaysOnTop(true, 'screen-saver')
           overlayWindow.focus()
@@ -906,7 +926,8 @@ app.whenReady().then(() => {
       const text = await chatWithProvider(messages, provider, modelId)
       return { success: true, content: [{ type: 'text', text }] }
     } catch (error) {
-      return { success: false, error: error.message }
+      const isAuthError = error.status === 401 || error.status === 403 || error.message?.includes('API key')
+      return { success: false, error: error.message, code: isAuthError ? 'auth_error' : 'unknown' }
     }
   })
 

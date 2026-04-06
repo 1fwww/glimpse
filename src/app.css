@@ -680,6 +680,18 @@
   opacity: 0.8;
 }
 
+.msg-snippet-toggle {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--cyan-dim);
+  margin-top: 3px;
+  display: block;
+}
+
+.msg-snippet-toggle:hover {
+  color: var(--cyan-primary);
+}
+
 .msg-image {
   max-width: 110px;
   max-height: 70px;
@@ -2260,7 +2272,6 @@
   padding: 0 28px 20px;
 }
 
-.home-section {}
 
 .home-section-label {
   display: block;
@@ -2330,8 +2341,6 @@
 }
 
 /* Recent chats list */
-.home-recents-list {
-}
 
 .home-recent-item {
   display: flex;

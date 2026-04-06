@@ -63,7 +63,7 @@ export default function HomeApp() {
             </div>
             <div className="home-shortcut-row">
               <span className="home-sc-text">Quick chat</span>
-              <span className="home-sc-keys"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>C</kbd></span>
+              <span className="home-sc-keys"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>X</kbd></span>
             </div>
           </div>
         </div>

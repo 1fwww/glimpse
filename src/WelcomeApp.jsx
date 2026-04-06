@@ -9,7 +9,16 @@ export default function WelcomeApp() {
   const [permissions, setPermissions] = useState({ screen: false, accessibility: false })
   const [checking, setChecking] = useState(false)
   const [triedShortcuts, setTriedShortcuts] = useState({ screenshot: false, chat: false })
+  const [showShortcutSkip, setShowShortcutSkip] = useState(false)
   const [eyebrowWiggle, setEyebrowWiggle] = useState(false)
+
+  // Show skip link on shortcuts page after timeout
+  useEffect(() => {
+    if (step === 2) {
+      const timer = setTimeout(() => setShowShortcutSkip(true), 10000)
+      return () => clearTimeout(timer)
+    }
+  }, [step])
 
   // Persist step across restarts
   useEffect(() => {
@@ -176,7 +185,7 @@ export default function WelcomeApp() {
                   <div className="shortcut-desc">Start a chat, auto-grabs selected text</div>
                 </div>
                 <div className="shortcut-keys">
-                  <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>C</kbd>
+                  <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>X</kbd>
                 </div>
               </div>
             </div>
@@ -184,6 +193,11 @@ export default function WelcomeApp() {
             <button className="welcome-btn" onClick={() => setStep(3)} disabled={!triedShortcuts.screenshot || !triedShortcuts.chat}>
               {triedShortcuts.screenshot && triedShortcuts.chat ? 'Continue' : 'Try both shortcuts to continue'}
             </button>
+            {showShortcutSkip && !triedShortcuts.screenshot && !triedShortcuts.chat && (
+              <button className="welcome-skip-link" onClick={() => setStep(3)}>
+                Shortcuts not working? Continue anyway
+              </button>
+            )}
           </div>
         )}
 

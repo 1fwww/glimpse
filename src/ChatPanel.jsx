@@ -47,6 +47,18 @@ function Tooltip({ text, children }) {
   )
 }
 
+function ExpandableSnippet({ text }) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = text.length > 150
+  const preview = isLong ? text.slice(0, 80) + ' … ' + text.slice(-30) : text
+  return (
+    <div className="msg-snippet" onClick={() => isLong && setExpanded(!expanded)} style={isLong ? { cursor: 'pointer' } : undefined}>
+      <div className="msg-snippet-text">{expanded ? text : preview}</div>
+      {isLong && <span className="msg-snippet-toggle">{expanded ? 'Show less' : 'Show more'}</span>}
+    </div>
+  )
+}
+
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
@@ -118,13 +130,23 @@ export default function ChatPanel({
     // Skip reload when a new thread just gets its first ID (preserve in-session images)
     if (!isNewThreadGettingId) {
       if (currentThread?.messages?.length > 0) {
-        setMessages(currentThread.messages.map(m => ({
-          role: m.role,
-          text: m.role === 'assistant'
-            ? m.content.map(c => c.text || '').join('')
-            : m.content.map(c => c.type === 'text' ? c.text : '[image]').join(' '),
-        })))
-        apiMessages.current = [...currentThread.messages]
+        setMessages(currentThread.messages.map(m => {
+          if (m.role === 'assistant') {
+            return { role: 'assistant', text: (m.content || []).map(c => c.text || '').join(''), model: m.model }
+          }
+          const rawText = (m.content || []).map(c => c.type === 'text' ? c.text : '').join(' ').trim()
+          // Parse out [Referenced text: "..."] and annotation notes
+          const refMatch = rawText.match(/^\[Referenced text: "(.+?)"\]\s*\n*(?:\[Note:.*?\]\s*\n*)?(.*)$/s)
+          const annotMatch = rawText.match(/^\[Note:.*?\]\s*\n*(.*)$/s)
+          if (refMatch) {
+            return { role: 'user', text: refMatch[2].trim(), snippet: refMatch[1] }
+          }
+          if (annotMatch) {
+            return { role: 'user', text: annotMatch[1].trim() }
+          }
+          return { role: 'user', text: rawText }
+        }))
+        apiMessages.current = [...(currentThread.messages || [])]
       } else {
         setMessages([])
         apiMessages.current = []
@@ -145,6 +167,10 @@ export default function ChatPanel({
   // Auto-focus input
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 100)
+    // Retry focus when window gains focus (handles terminal stealing focus)
+    const handleFocus = () => setTimeout(() => inputRef.current?.focus(), 50)
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
   }, [currentThread?.id])
 
   // Close thread menu on outside click
@@ -155,8 +181,8 @@ export default function ChatPanel({
         setThreadMenuOpen(false)
       }
     }
-    setTimeout(() => window.addEventListener('click', handleClick), 0)
-    return () => window.removeEventListener('click', handleClick)
+    window.addEventListener('click', handleClick, { capture: true })
+    return () => window.removeEventListener('click', handleClick, { capture: true })
   }, [threadMenuOpen, setThreadMenuOpen])
 
   // Close model menu on outside click
@@ -165,8 +191,8 @@ export default function ChatPanel({
     const handleClick = (e) => {
       if (!e.target.closest('.model-selector')) setModelMenuOpen(false)
     }
-    setTimeout(() => window.addEventListener('click', handleClick), 0)
-    return () => window.removeEventListener('click', handleClick)
+    window.addEventListener('click', handleClick, { capture: true })
+    return () => window.removeEventListener('click', handleClick, { capture: true })
   }, [modelMenuOpen])
 
   // When croppedImage changes (new screenshot), re-attach
@@ -240,8 +266,8 @@ export default function ChatPanel({
           setIsLoading(false)
           if (result.success) {
             const assistantText = result.content.map(c => c.text || '').join('')
-            apiMessages.current.push({ role: 'assistant', content: result.content })
             const currentModelName = availableProviders.flatMap(p => p.models || []).find(m => m.id === modelId)?.name || ''
+            apiMessages.current.push({ role: 'assistant', content: result.content, model: currentModelName })
             setMessages(prev => [...prev, { role: 'assistant', text: assistantText, model: currentModelName }])
             if (!chatFullSize) setChatFullSize(true)
             setTimeout(() => scrollToLastAssistant(), 550)
@@ -320,7 +346,8 @@ export default function ChatPanel({
 
   const sendMessage = async (overrideText) => {
     const text = (overrideText || input).trim()
-    if (!text || isLoading) return
+    const hasAttachment = textContext || (screenshotAttached && croppedImage)
+    if ((!text && !hasAttachment) || isLoading) return
 
     // No API keys configured → show setup
     if (!availableProviders.length) {
@@ -373,10 +400,10 @@ export default function ChatPanel({
     }
 
     // Build API text with context
-    let apiText = text
+    let apiText = text || (textContext ? 'What is this?' : 'What do you see?')
     const sentSnippet = textContext || null
     if (textContext) {
-      apiText = `[Referenced text: "${textContext}"]\n\n${text}`
+      apiText = `[Referenced text: "${textContext}"]\n\n${text || 'What is this?'}`
       setTextContext('')
     }
     if (willAttachImage && annotationCount > 0) {
@@ -415,10 +442,9 @@ export default function ChatPanel({
 
       if (result.success) {
         const assistantText = result.content.map(c => c.text || '').join('')
-        const assistantApiMsg = { role: 'assistant', content: result.content }
-        apiMessages.current.push(assistantApiMsg)
-
         const currentModelName = availableProviders.flatMap(p => p.models || []).find(m => m.id === modelId)?.name || ''
+        const assistantApiMsg = { role: 'assistant', content: result.content, model: currentModelName }
+        apiMessages.current.push(assistantApiMsg)
         setMessages(prev => [...prev, { role: 'assistant', text: assistantText, model: currentModelName }])
 
         // Expand panel after AI responds
@@ -454,22 +480,15 @@ export default function ChatPanel({
           }
         }
       } else {
-        const errMsg = result.error || 'Something went wrong'
-        if (errMsg.includes('API key') || errMsg.includes('auth') || errMsg.includes('401') || errMsg.includes('Cannot read')) {
+        if (result.code === 'auth_error') {
           setMessages(prev => [...prev, { role: 'assistant', text: 'API key missing or invalid. Please check Settings.' }])
           if (refreshProviders) refreshProviders()
         } else {
-          setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${errMsg}` }])
+          setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${result.error || 'Something went wrong'}` }])
         }
       }
     } catch (err) {
-      const errMsg = err.message || 'Something went wrong'
-      if (errMsg.includes('API key') || errMsg.includes('auth') || errMsg.includes('null') || errMsg.includes('Cannot read')) {
-        setMessages(prev => [...prev, { role: 'assistant', text: 'API key missing or invalid. Please check Settings.' }])
-        if (refreshProviders) refreshProviders()
-      } else {
-        setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${errMsg}` }])
-      }
+      setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${err.message || 'Something went wrong'}` }])
     }
 
     setIsLoading(false)
@@ -704,9 +723,7 @@ export default function ChatPanel({
                           <img src={msg.image} alt="screenshot" className="msg-image" />
                         )}
                         {msg.snippet && (
-                          <div className="msg-snippet">
-                            <div className="msg-snippet-text">{msg.snippet.length > 200 ? msg.snippet.slice(0, 200) + '…' : msg.snippet}</div>
-                          </div>
+                          <ExpandableSnippet text={msg.snippet} />
                         )}
                         <div className="msg-text">{msg.text}</div>
                       </>
@@ -755,7 +772,7 @@ export default function ChatPanel({
           )}
           {textContext && (
             <div className="text-context-snippet">
-              <div className="snippet-text">{textContext.length > 120 ? textContext.slice(0, 120) + '…' : textContext}</div>
+              <div className="snippet-text">{textContext.length > 120 ? textContext.slice(0, 80) + ' … ' + textContext.slice(-30) : textContext}</div>
               <button className="snippet-dismiss" onClick={() => setTextContext('')}>×</button>
             </div>
           )}
@@ -769,7 +786,7 @@ export default function ChatPanel({
             rows={2}
             disabled={showApiKeySetup}
           />
-          <button className="chat-send-arrow" onClick={() => sendMessage()} disabled={isLoading || !input.trim() || showApiKeySetup}>
+          <button className="chat-send-arrow" onClick={() => sendMessage()} disabled={isLoading || (!input.trim() && !textContext && !(screenshotAttached && croppedImage)) || showApiKeySetup}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 19V5M5 12l7-7 7 7" />
             </svg>

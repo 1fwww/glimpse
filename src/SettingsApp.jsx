@@ -106,122 +106,49 @@ export default function SettingsApp() {
           )}
           {!apiKeys.isInvite && (
             <>
-              {/* Anthropic */}
-              <div className="settings-key-row">
-                <div className="settings-key-info">
-                  <span className="settings-key-label">Anthropic</span>
-                  <span className={`settings-key-value ${keySaved === 'anthropic' ? 'key-saved' : ''}`}>
-                    {keySaved === 'anthropic' ? '✓ Saved' : (apiKeys.ANTHROPIC_API_KEY || 'Not configured')}
-                  </span>
-                </div>
-                {editingKey === 'anthropic' ? (
-                  <div className="settings-key-edit">
-                    <input
-                      type="password"
-                      placeholder="sk-ant-..."
-                      value={keyInput}
-                      onChange={(e) => setKeyInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveKey('anthropic')}
-                      autoFocus
-                      spellCheck={false}
-                    />
-                    <div className="settings-key-actions">
-                      <button className="settings-btn-sm" onClick={() => handleSaveKey('anthropic')} disabled={saving}>
-                        {saving ? '...' : 'Save'}
-                      </button>
-                      <button className="settings-btn-sm cancel" onClick={() => { setEditingKey(null); setKeyInput(''); setKeyError('') }}>Cancel</button>
+              {[
+                { id: 'anthropic', label: 'Anthropic', keyField: 'ANTHROPIC_API_KEY', placeholder: 'sk-ant-...' },
+                { id: 'gemini', label: 'Gemini', keyField: 'GEMINI_API_KEY', placeholder: 'AIza...' },
+                { id: 'openai', label: 'OpenAI', keyField: 'OPENAI_API_KEY', placeholder: 'sk-...' },
+              ].map(p => (
+                <div key={p.id} className="settings-key-row">
+                  <div className="settings-key-info">
+                    <span className="settings-key-label">{p.label}</span>
+                    <span className={`settings-key-value ${keySaved === p.id ? 'key-saved' : ''}`}>
+                      {keySaved === p.id ? '✓ Saved' : (apiKeys[p.keyField] || 'Not configured')}
+                    </span>
+                  </div>
+                  {editingKey === p.id ? (
+                    <div className="settings-key-edit">
+                      <input
+                        type="password"
+                        placeholder={p.placeholder}
+                        value={keyInput}
+                        onChange={(e) => setKeyInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveKey(p.id)}
+                        autoFocus
+                        spellCheck={false}
+                      />
+                      <div className="settings-key-actions">
+                        <button className="settings-btn-sm" onClick={() => handleSaveKey(p.id)} disabled={saving}>
+                          {saving ? '...' : 'Save'}
+                        </button>
+                        <button className="settings-btn-sm cancel" onClick={() => { setEditingKey(null); setKeyInput(''); setKeyError('') }}>Cancel</button>
+                      </div>
+                      {keyError && <div className="settings-key-error">{keyError}</div>}
                     </div>
-                    {keyError && <div className="settings-key-error">{keyError}</div>}
-                  </div>
-                ) : (
-                  <div className="settings-key-actions">
-                    <button className="settings-btn-sm" onClick={() => { setEditingKey('anthropic'); setKeyInput(''); setKeyError('') }}>
-                      {apiKeys.ANTHROPIC_API_KEY ? 'Update' : 'Add'}
-                    </button>
-                    {apiKeys.ANTHROPIC_API_KEY && (
-                      <button className="settings-btn-sm danger" onClick={() => handleDeleteKey('anthropic')}>Delete</button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Gemini */}
-              <div className="settings-key-row">
-                <div className="settings-key-info">
-                  <span className="settings-key-label">Gemini</span>
-                  <span className={`settings-key-value ${keySaved === 'gemini' ? 'key-saved' : ''}`}>
-                    {keySaved === 'gemini' ? '✓ Saved' : (apiKeys.GEMINI_API_KEY || 'Not configured')}
-                  </span>
-                </div>
-                {editingKey === 'gemini' ? (
-                  <div className="settings-key-edit">
-                    <input
-                      type="password"
-                      placeholder="AIza..."
-                      value={keyInput}
-                      onChange={(e) => setKeyInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveKey('gemini')}
-                      autoFocus
-                      spellCheck={false}
-                    />
+                  ) : (
                     <div className="settings-key-actions">
-                      <button className="settings-btn-sm" onClick={() => handleSaveKey('gemini')} disabled={saving}>
-                        {saving ? '...' : 'Save'}
+                      <button className="settings-btn-sm" onClick={() => { setEditingKey(p.id); setKeyInput(''); setKeyError('') }}>
+                        {apiKeys[p.keyField] ? 'Update' : 'Add'}
                       </button>
-                      <button className="settings-btn-sm cancel" onClick={() => { setEditingKey(null); setKeyInput(''); setKeyError('') }}>Cancel</button>
+                      {apiKeys[p.keyField] && (
+                        <button className="settings-btn-sm danger" onClick={() => handleDeleteKey(p.id)}>Delete</button>
+                      )}
                     </div>
-                    {keyError && <div className="settings-key-error">{keyError}</div>}
-                  </div>
-                ) : (
-                  <div className="settings-key-actions">
-                    <button className="settings-btn-sm" onClick={() => { setEditingKey('gemini'); setKeyInput(''); setKeyError('') }}>
-                      {apiKeys.GEMINI_API_KEY ? 'Update' : 'Add'}
-                    </button>
-                    {apiKeys.GEMINI_API_KEY && (
-                      <button className="settings-btn-sm danger" onClick={() => handleDeleteKey('gemini')}>Delete</button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* OpenAI */}
-              <div className="settings-key-row">
-                <div className="settings-key-info">
-                  <span className="settings-key-label">OpenAI</span>
-                  <span className={`settings-key-value ${keySaved === 'openai' ? 'key-saved' : ''}`}>
-                    {keySaved === 'openai' ? '✓ Saved' : (apiKeys.OPENAI_API_KEY || 'Not configured')}
-                  </span>
+                  )}
                 </div>
-                {editingKey === 'openai' ? (
-                  <div className="settings-key-edit">
-                    <input
-                      type="password"
-                      placeholder="sk-..."
-                      value={keyInput}
-                      onChange={(e) => setKeyInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveKey('openai')}
-                      autoFocus
-                      spellCheck={false}
-                    />
-                    <div className="settings-key-actions">
-                      <button className="settings-btn-sm" onClick={() => handleSaveKey('openai')} disabled={saving}>
-                        {saving ? '...' : 'Save'}
-                      </button>
-                      <button className="settings-btn-sm cancel" onClick={() => { setEditingKey(null); setKeyInput(''); setKeyError('') }}>Cancel</button>
-                    </div>
-                    {keyError && <div className="settings-key-error">{keyError}</div>}
-                  </div>
-                ) : (
-                  <div className="settings-key-actions">
-                    <button className="settings-btn-sm" onClick={() => { setEditingKey('openai'); setKeyInput(''); setKeyError('') }}>
-                      {apiKeys.OPENAI_API_KEY ? 'Update' : 'Add'}
-                    </button>
-                    {apiKeys.OPENAI_API_KEY && (
-                      <button className="settings-btn-sm danger" onClick={() => handleDeleteKey('openai')}>Delete</button>
-                    )}
-                  </div>
-                )}
-              </div>
+              ))}
             </>
           )}
         </div>
@@ -273,7 +200,7 @@ export default function SettingsApp() {
               <span className="settings-pref-label">Quick chat</span>
               <span className="settings-shortcut-hint">Tip: Select text, then press to ask about it</span>
             </div>
-            <span className="settings-shortcut-keys"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>C</kbd></span>
+            <span className="settings-shortcut-keys"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>X</kbd></span>
           </div>
         </div>
       </div>
