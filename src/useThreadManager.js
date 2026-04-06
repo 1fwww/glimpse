@@ -11,6 +11,7 @@ export default function useThreadManager() {
   const [recentThreads, setRecentThreads] = useState([])
   const [isNewThread, setIsNewThread] = useState(false)
   const [provider, setProvider] = useState('claude')
+  const [modelId, setModelId] = useState(null)
   const [availableProviders, setAvailableProviders] = useState([])
 
   // Load threads + providers on mount
@@ -22,7 +23,10 @@ export default function useThreadManager() {
       }
       window.electronAPI.getAvailableProviders?.().then(providers => {
         setAvailableProviders(providers || [])
-        if (providers?.length > 0) setProvider(providers[0].id)
+        if (providers?.length > 0) {
+          setProvider(providers[0].id)
+          setModelId(providers[0].models?.[0]?.id || null)
+        }
       })
       window.electronAPI.getThreads().then(threads => {
         setRecentThreads(threads || [])
@@ -90,7 +94,10 @@ export default function useThreadManager() {
   const refreshProviders = useCallback(async () => {
     const providers = await window.electronAPI?.getAvailableProviders()
     setAvailableProviders(providers || [])
-    if (providers?.length > 0) setProvider(providers[0].id)
+    if (providers?.length > 0) {
+      setProvider(providers[0].id)
+      setModelId(providers[0].models?.[0]?.id || null)
+    }
   }, [])
 
   return {
@@ -101,6 +108,8 @@ export default function useThreadManager() {
     setIsNewThread,
     provider,
     setProvider,
+    modelId,
+    setModelId,
     availableProviders,
     handleThreadChange,
     handleNewThread,

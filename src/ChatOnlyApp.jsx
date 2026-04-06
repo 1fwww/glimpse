@@ -68,6 +68,8 @@ export default function ChatOnlyApp() {
         onMinimize={handleClose}
         provider={tm.provider}
         setProvider={tm.setProvider}
+        modelId={tm.modelId}
+        setModelId={tm.setModelId}
         availableProviders={tm.availableProviders}
         annotationCount={0}
         initialContext={initialContext}

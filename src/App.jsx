@@ -23,7 +23,7 @@ export default function App() {
   const [chatFullSize, setChatFullSize] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
   const [chatMinimized, setChatMinimized] = useState(false)
-  const userMinimizedRef = useRef(false)
+  const userMinimizedRef = useRef(localStorage.getItem('chat-minimized') === 'true')
   const chatWasOpenRef = useRef(false)
   const [activeTool, setActiveTool] = useState(null)
   const [activeColor, setActiveColor] = useState('#e5243a')
@@ -455,11 +455,13 @@ export default function App() {
   const handleMinimizeChat = () => {
     setChatMinimized(true)
     userMinimizedRef.current = true
+    localStorage.setItem('chat-minimized', 'true')
   }
 
   const handleRestoreChat = () => {
     setChatMinimized(false)
     userMinimizedRef.current = false
+    localStorage.setItem('chat-minimized', 'false')
   }
 
   const [frozenChatPos, setFrozenChatPos] = useState(null)
@@ -527,6 +529,7 @@ export default function App() {
     <div
       ref={overlayRef}
       className={`overlay ${isExiting ? 'overlay-exiting' : ''} ${isMovingSelection ? 'overlay-moving' : ''} ${isResizingSelection ? 'overlay-resizing' : ''}`}
+      style={screenImage ? { backgroundImage: `url(${screenImage})`, backgroundSize: '100% 100%' } : undefined}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -647,21 +650,9 @@ export default function App() {
       )}
 
       {!chatVisible && !selection && !hoveredWindow && (
-        <>
-          <div className="hint">
-            <div className="hint-icon">
-              <svg viewBox="0 0 24 24">
-                <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="4 2" />
-                <path d="M9 3v18M15 3v18M3 9h18M3 15h18" opacity="0.3" />
-              </svg>
-            </div>
-            <div className="hint-text">Drag to select a region</div>
-            <div className="hint-sub">or hover over a window to select it</div>
-          </div>
-          <div className="shortcut-hint">
-            <kbd>ESC</kbd> to close
-          </div>
-        </>
+        <div className="screenshot-mode-toast">
+          Screenshot Mode
+        </div>
       )}
 
       {hasConversation && !chatMinimized && (
@@ -697,6 +688,8 @@ export default function App() {
           }}
           provider={tm.provider}
           setProvider={tm.setProvider}
+          modelId={tm.modelId}
+          setModelId={tm.setModelId}
           availableProviders={tm.availableProviders}
         />
       )}

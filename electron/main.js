@@ -15,6 +15,7 @@ try {
 const { execFile } = require('child_process')
 const Anthropic = require('@anthropic-ai/sdk')
 const { GoogleGenerativeAI } = require('@google/generative-ai')
+const OpenAI = require('openai')
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') })
 
 let overlayWindow = null
@@ -47,6 +48,7 @@ function getEffectiveKey(provider) {
   const stored = loadApiKeys()
   if (provider === 'anthropic') return stored.ANTHROPIC_API_KEY || ''
   if (provider === 'gemini') return stored.GEMINI_API_KEY || ''
+  if (provider === 'openai') return stored.OPENAI_API_KEY || ''
   return ''
 }
 
@@ -54,12 +56,15 @@ function getEffectiveKey(provider) {
 
 let claudeClient = null
 let geminiClient = null
+let openaiClient = null
 
 function initClients() {
   const anthropicKey = getEffectiveKey('anthropic')
   const geminiKey = getEffectiveKey('gemini')
+  const openaiKey = getEffectiveKey('openai')
   claudeClient = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null
   geminiClient = geminiKey ? new GoogleGenerativeAI(geminiKey) : null
+  openaiClient = openaiKey ? new OpenAI({ apiKey: openaiKey }) : null
 }
 
 initClients()
@@ -104,7 +109,11 @@ function createWelcomeWindow() {
   welcomeWindow.webContents.on('did-finish-load', () => {
 
     welcomeWindow.show()
+    welcomeWindow.setAlwaysOnTop(true)
     welcomeWindow.focus()
+    setTimeout(() => {
+      if (welcomeWindow && !welcomeWindow.isDestroyed()) welcomeWindow.setAlwaysOnTop(false)
+    }, 500)
   })
   welcomeWindow.on('closed', () => {
 
@@ -133,6 +142,42 @@ function savePreference(key, value) {
 
 let settingsWindow = null
 
+// ── Home window ──
+
+let homeWindow = null
+
+function createHomeWindow() {
+  if (homeWindow && !homeWindow.isDestroyed()) {
+    homeWindow.focus()
+    return
+  }
+  homeWindow = new BrowserWindow({
+    width: 380, height: 560,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  homeWindow.loadURL(getURL('home'))
+  homeWindow.webContents.on('did-finish-load', () => {
+    homeWindow.show()
+    homeWindow.focus()
+  })
+  homeWindow.on('closed', () => { homeWindow = null })
+}
+
+function closeHomeWindow() {
+  if (homeWindow && !homeWindow.isDestroyed()) {
+    homeWindow.close()
+    homeWindow = null
+  }
+}
+
 function toggleSettingsWindow() {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.close()
@@ -142,16 +187,14 @@ function toggleSettingsWindow() {
   settingsWindow = new BrowserWindow({
     width: 420, height: 520,
     frame: false,
-    backgroundColor: '#0c121e',
+    transparent: true,
     resizable: false,
-    alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   })
-  settingsWindow.setAlwaysOnTop(true, 'screen-saver')
   settingsWindow.loadURL(getURL('settings'))
   settingsWindow.on('closed', () => { settingsWindow = null })
 }
@@ -192,12 +235,27 @@ function createChatWindow(opts = {}) {
 
   chatWindow.loadURL(getChatOnlyURL())
 
+  chatWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  chatWindow.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('file://') && !url.startsWith('http://localhost')) {
+      e.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+
   chatWindow.webContents.on('did-finish-load', () => {
-    chatWindow.webContents.send('pin-state', alwaysOnTop)
-    if (threadData) chatWindow.webContents.send('load-thread-data', threadData)
-    if (croppedImage) chatWindow.webContents.send('set-cropped-image', croppedImage)
-    if (selectedText) chatWindow.webContents.send('text-context', selectedText)
-    if (!onReady) chatWindow.show()
+    // Small delay to ensure React has mounted and listeners are registered
+    setTimeout(() => {
+      if (!chatWindow || chatWindow.isDestroyed()) return
+      chatWindow.webContents.send('pin-state', alwaysOnTop)
+      if (threadData) chatWindow.webContents.send('load-thread-data', threadData)
+      if (croppedImage) chatWindow.webContents.send('set-cropped-image', croppedImage)
+      if (selectedText) chatWindow.webContents.send('text-context', selectedText)
+      if (!onReady) chatWindow.show()
+    }, 100)
   })
 
   if (onReady) {
@@ -323,18 +381,32 @@ async function captureScreen(display) {
 
 // ── AI providers ──
 
-async function chatWithClaude(messages) {
+const MODELS = {
+  claude: [
+    { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5' },
+    { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4' },
+  ],
+  gemini: [
+    { id: 'gemini-2.5-flash', name: '2.5 Flash' },
+    { id: 'gemini-2.5-pro', name: '2.5 Pro' },
+  ],
+  openai: [
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+    { id: 'gpt-4o', name: 'GPT-4o' },
+  ],
+}
+
+async function chatWithClaude(messages, modelId) {
   const response = await claudeClient.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: modelId,
     max_tokens: 4096,
     messages,
   })
   return response.content.map(c => c.text || '').join('')
 }
 
-async function chatWithGemini(messages) {
-  const model = geminiClient.getGenerativeModel({ model: 'gemini-2.5-flash' })
-
+async function chatWithGemini(messages, modelId) {
+  const model = geminiClient.getGenerativeModel({ model: modelId })
   const history = []
   for (const msg of messages) {
     const parts = []
@@ -351,14 +423,41 @@ async function chatWithGemini(messages) {
     }
     history.push({ role: msg.role === 'assistant' ? 'model' : 'user', parts })
   }
-
   const chat = model.startChat({ history: history.slice(0, -1) })
   const result = await chat.sendMessage(history[history.length - 1].parts)
   return result.response.text()
 }
 
-async function chatWithProvider(messages, provider) {
-  return provider === 'gemini' ? chatWithGemini(messages) : chatWithClaude(messages)
+async function chatWithOpenAI(messages, modelId) {
+  const openaiMessages = []
+  for (const msg of messages) {
+    if (Array.isArray(msg.content)) {
+      const parts = []
+      for (const block of msg.content) {
+        if (block.type === 'text') {
+          parts.push({ type: 'text', text: block.text })
+        } else if (block.type === 'image') {
+          parts.push({ type: 'image_url', image_url: { url: `data:${block.source.media_type};base64,${block.source.data}` } })
+        }
+      }
+      openaiMessages.push({ role: msg.role, content: parts })
+    } else {
+      openaiMessages.push({ role: msg.role, content: msg.content })
+    }
+  }
+  const response = await openaiClient.chat.completions.create({
+    model: modelId,
+    max_tokens: 4096,
+    messages: openaiMessages,
+  })
+  return response.choices[0]?.message?.content || ''
+}
+
+async function chatWithProvider(messages, provider, modelId) {
+  if (provider === 'claude') return chatWithClaude(messages, modelId || MODELS.claude[0].id)
+  if (provider === 'gemini') return chatWithGemini(messages, modelId || MODELS.gemini[0].id)
+  if (provider === 'openai') return chatWithOpenAI(messages, modelId || MODELS.openai[0].id)
+  throw new Error('Unknown provider: ' + provider)
 }
 
 // ── App lifecycle ──
@@ -372,6 +471,30 @@ app.whenReady().then(() => {
     createWelcomeWindow()
   }
 
+  // Pre-warm overlay: create hidden, load HTML, ready for instant show
+  let prewarmedOverlay = null
+  function prewarmOverlay() {
+    const display = getActiveDisplay()
+    const { x, y, width, height } = display.bounds
+    prewarmedOverlay = new BrowserWindow({
+      x, y, width, height,
+      frame: false, transparent: true, skipTaskbar: true,
+      resizable: false, movable: false, hasShadow: false,
+      show: false, enableLargerThanScreen: true,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true, nodeIntegration: false,
+      },
+    })
+    if (isDev) {
+      prewarmedOverlay.loadURL(`http://localhost:${DEV_PORT}`)
+    } else {
+      prewarmedOverlay.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+    }
+    prewarmedOverlay.on('closed', () => { prewarmedOverlay = null })
+  }
+  prewarmOverlay()
+
   // Cmd+Shift+Z → screenshot mode
   const r1 = globalShortcut.register('CommandOrControl+Shift+Z', async () => {
 
@@ -383,6 +506,7 @@ app.whenReady().then(() => {
       createWelcomeWindow()
       return
     }
+    closeHomeWindow()
     closeChatWindow()
 
     const activeDisplay = getActiveDisplay()
@@ -411,23 +535,39 @@ app.whenReady().then(() => {
       getWindowBounds(),
     ])
 
-    if (capture) {
-      createOverlayWindow(activeDisplay)
+    if (!capture) return
 
+    // Use pre-warmed overlay if available, otherwise create new
+    if (prewarmedOverlay && !prewarmedOverlay.isDestroyed()) {
+      overlayWindow = prewarmedOverlay
+      prewarmedOverlay = null
+      const { x, y, width, height } = activeDisplay.bounds
+      overlayWindow.setBounds({ x, y, width, height })
+      overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+      overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+      overlayWindow.setFullScreenable(false)
+      const actualBounds = overlayWindow.getBounds()
+      const offset = { x: actualBounds.x - x, y: actualBounds.y - y }
+      overlayWindow.webContents.send('screen-captured', capture.dataUrl, windowBounds, displayInfo, offset)
+      overlayWindow.show()
+      overlayWindow.focus()
+      globalShortcut.register('Escape', closeOverlay)
+      setTimeout(() => { if (overlayWindow) overlayWindow.setVisibleOnAllWorkspaces(false) }, 100)
+    } else {
+      createOverlayWindow(activeDisplay)
       overlayWindow.webContents.on('did-finish-load', () => {
         const actualBounds = overlayWindow.getBounds()
-        const offset = {
-          x: actualBounds.x - activeDisplay.bounds.x,
-          y: actualBounds.y - activeDisplay.bounds.y,
-        }
+        const offset = { x: actualBounds.x - activeDisplay.bounds.x, y: actualBounds.y - activeDisplay.bounds.y }
         overlayWindow.webContents.send('screen-captured', capture.dataUrl, windowBounds, displayInfo, offset)
         overlayWindow.show()
         overlayWindow.focus()
-        setTimeout(() => {
-          if (overlayWindow) overlayWindow.setVisibleOnAllWorkspaces(false)
-        }, 100)
+        globalShortcut.register('Escape', closeOverlay)
+        setTimeout(() => { if (overlayWindow) overlayWindow.setVisibleOnAllWorkspaces(false) }, 100)
       })
     }
+
+    // Pre-warm next overlay
+    setTimeout(prewarmOverlay, 1000)
   })
 
 
@@ -443,6 +583,7 @@ app.whenReady().then(() => {
       createWelcomeWindow()
       return
     }
+    closeHomeWindow()
     if (overlayWindow) { overlayWindow.destroy(); overlayWindow = null }
 
     if (chatWindow && !chatWindow.isDestroyed()) {
@@ -491,10 +632,37 @@ app.whenReady().then(() => {
 
   // ── IPC handlers ──
 
-  ipcMain.on('close-overlay', () => {
+  ipcMain.on('lower-overlay', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.setAlwaysOnTop(false)
+  })
+
+  ipcMain.on('restore-overlay', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+    }
+  })
+
+  ipcMain.on('close-home', () => { closeHomeWindow() })
+
+  ipcMain.on('open-thread-in-chat', (_, threadId) => {
+    closeHomeWindow()
+    // Load full thread from disk
+    try {
+      const threadData = JSON.parse(fs.readFileSync(getThreadPath(threadId), 'utf8'))
+      createChatWindow({ threadData })
+    } catch {
+      createChatWindow({})
+    }
+  })
+
+  function closeOverlay() {
+    globalShortcut.unregister('Escape')
     if (overlayWindow) { overlayWindow.destroy(); overlayWindow = null }
     if (settingsWindow && !settingsWindow.isDestroyed()) { settingsWindow.close(); settingsWindow = null }
-  })
+    setTimeout(prewarmOverlay, 500)
+  }
+
+  ipcMain.on('close-overlay', closeOverlay)
 
   ipcMain.on('close-chat-window', () => {
     closeChatWindow()
@@ -612,7 +780,25 @@ app.whenReady().then(() => {
   })
 
   // Settings
-  ipcMain.on('open-settings', () => { toggleSettingsWindow() })
+  ipcMain.on('providers-changed', () => {
+    // Broadcast to all open windows
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.webContents.send('providers-changed')
+    if (chatWindow && !chatWindow.isDestroyed()) chatWindow.webContents.send('providers-changed')
+  })
+
+  ipcMain.on('open-settings', () => {
+    const wasOverlayOnTop = overlayWindow && !overlayWindow.isDestroyed()
+    if (wasOverlayOnTop) overlayWindow.setAlwaysOnTop(false)
+    toggleSettingsWindow()
+    if (settingsWindow) {
+      settingsWindow.on('closed', () => {
+        if (overlayWindow && !overlayWindow.isDestroyed()) {
+          overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+          overlayWindow.focus()
+        }
+      })
+    }
+  })
   ipcMain.on('close-settings', () => {
     if (settingsWindow && !settingsWindow.isDestroyed()) { settingsWindow.close(); settingsWindow = null }
   })
@@ -628,10 +814,12 @@ app.whenReady().then(() => {
     const keys = loadApiKeys()
     if (provider === 'anthropic') delete keys.ANTHROPIC_API_KEY
     if (provider === 'gemini') delete keys.GEMINI_API_KEY
+    if (provider === 'openai') delete keys.OPENAI_API_KEY
     if (provider === 'invite') {
       delete keys._invite
       delete keys.ANTHROPIC_API_KEY
       delete keys.GEMINI_API_KEY
+      delete keys.OPENAI_API_KEY
     }
     saveApiKeys(keys)
     return { success: true }
@@ -639,7 +827,6 @@ app.whenReady().then(() => {
 
   ipcMain.handle('select-folder', async () => {
     if (overlayWindow) overlayWindow.setAlwaysOnTop(false)
-    if (settingsWindow) settingsWindow.setAlwaysOnTop(false)
     const prefs = loadPreferences()
     const result = await dialog.showOpenDialog({
       defaultPath: prefs.savePath || undefined,
@@ -650,7 +837,7 @@ app.whenReady().then(() => {
       overlayWindow.focus()
     }
     if (settingsWindow && !settingsWindow.isDestroyed()) {
-      settingsWindow.setAlwaysOnTop(true, 'screen-saver')
+      settingsWindow.focus()
       settingsWindow.focus()
     }
     if (result.canceled || !result.filePaths.length) return null
@@ -672,22 +859,22 @@ app.whenReady().then(() => {
   ipcMain.handle('delete-thread', (_, id) => { deleteThread(id); return { success: true } })
 
   // AI
-  ipcMain.handle('chat-with-ai', async (_, { messages, provider }) => {
+  ipcMain.handle('chat-with-ai', async (_, { messages, provider, modelId }) => {
     try {
-      const text = await chatWithProvider(messages, provider)
+      const text = await chatWithProvider(messages, provider, modelId)
       return { success: true, content: [{ type: 'text', text }] }
     } catch (error) {
       return { success: false, error: error.message }
     }
   })
 
-  ipcMain.handle('generate-title', async (_, { messages, provider }) => {
+  ipcMain.handle('generate-title', async (_, { messages, provider, modelId }) => {
     try {
       const titleMessages = [
         ...messages,
         { role: 'user', content: [{ type: 'text', text: 'Generate a very short title (3-6 words) for this conversation. Reply with ONLY the title, nothing else.' }] },
       ]
-      const text = await chatWithProvider(titleMessages, provider)
+      const text = await chatWithProvider(titleMessages, provider, modelId)
       return { success: true, title: text.trim() }
     } catch (error) {
       return { success: false, error: error.message }
@@ -696,8 +883,9 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-available-providers', () => {
     const providers = []
-    if (claudeClient) providers.push({ id: 'claude', name: 'Claude', model: 'Haiku 4.5' })
-    if (geminiClient) providers.push({ id: 'gemini', name: 'Gemini', model: '2.5 Flash' })
+    if (claudeClient) providers.push({ id: 'claude', name: 'Claude', models: MODELS.claude })
+    if (geminiClient) providers.push({ id: 'gemini', name: 'Gemini', models: MODELS.gemini })
+    if (openaiClient) providers.push({ id: 'openai', name: 'OpenAI', models: MODELS.openai })
     return providers
   })
 
@@ -705,10 +893,12 @@ app.whenReady().then(() => {
     const stored = loadApiKeys()
     const anthropicKey = getEffectiveKey('anthropic')
     const geminiKey = getEffectiveKey('gemini')
+    const openaiKey = getEffectiveKey('openai')
     return {
       ANTHROPIC_API_KEY: anthropicKey ? '••••' + anthropicKey.slice(-4) : '',
       GEMINI_API_KEY: geminiKey ? '••••' + geminiKey.slice(-4) : '',
-      hasAnyKey: !!(anthropicKey || geminiKey),
+      OPENAI_API_KEY: openaiKey ? '••••' + openaiKey.slice(-4) : '',
+      hasAnyKey: !!(anthropicKey || geminiKey || openaiKey),
       isInvite: !!stored._invite,
     }
   })
@@ -746,6 +936,22 @@ app.whenReady().then(() => {
       }
     }
 
+    // Validate OpenAI key
+    if (keys.OPENAI_API_KEY) {
+      try {
+        const client = new OpenAI({ apiKey: keys.OPENAI_API_KEY })
+        await client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'hi' }],
+        })
+      } catch (e) {
+        if (e.status === 401 || e.message?.includes('auth') || e.message?.includes('API key')) {
+          errors.push('OpenAI key is invalid')
+        }
+      }
+    }
+
     if (errors.length) {
       return { success: false, error: errors.join('. ') + '. Please check and try again.' }
     }
@@ -754,6 +960,7 @@ app.whenReady().then(() => {
       const current = loadApiKeys()
       if (keys.ANTHROPIC_API_KEY) current.ANTHROPIC_API_KEY = keys.ANTHROPIC_API_KEY
       if (keys.GEMINI_API_KEY) current.GEMINI_API_KEY = keys.GEMINI_API_KEY
+      if (keys.OPENAI_API_KEY) current.OPENAI_API_KEY = keys.OPENAI_API_KEY
       saveApiKeys(current)
       return { success: true }
     } catch (error) {
@@ -816,6 +1023,17 @@ app.whenReady().then(() => {
       return { success: false, error: error.message }
     }
   })
+})
+
+app.on('activate', () => {
+  // Dock icon clicked — show home if no windows open
+  if (!overlayWindow && !chatWindow && !welcomeWindow && !homeWindow) {
+    if (!fs.existsSync(ONBOARDING_PATH)) {
+      createWelcomeWindow()
+    } else {
+      createHomeWindow()
+    }
+  }
 })
 
 app.on('will-quit', () => { globalShortcut.unregisterAll() })

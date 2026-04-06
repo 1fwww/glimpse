@@ -56,6 +56,13 @@ export default function WelcomeApp() {
 
   return (
     <div className="welcome-app">
+      <div className="welcome-drag-bar">
+        <button className="welcome-close" onClick={handleClose}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
       <div className="welcome-content">
         {step === 0 && (
           <div className="welcome-step">
@@ -128,7 +135,7 @@ export default function WelcomeApp() {
             </button>
             {!allGranted && (
               <button className="welcome-skip-link" onClick={() => setStep(2)}>
-                Already granted? Continue anyway
+                I've granted permissions, continue
               </button>
             )}
           </div>
@@ -222,7 +229,6 @@ export default function WelcomeApp() {
             <div key={i} className={`welcome-dot ${step === i ? 'active' : ''}`} onClick={() => { if (i <= step) setStep(i) }} />
           ))}
         </div>
-        <button className="welcome-esc" onClick={handleClose}>ESC to close</button>
       </div>
     </div>
   )

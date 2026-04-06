@@ -7,6 +7,7 @@ export default function SettingsApp() {
   const [editingKey, setEditingKey] = useState(null) // 'anthropic' | 'gemini' | null
   const [keyInput, setKeyInput] = useState('')
   const [saving, setSaving] = useState(false)
+  const [keySaved, setKeySaved] = useState(null) // provider id that was just saved
   const [keyError, setKeyError] = useState('')
 
   useEffect(() => {
@@ -32,12 +33,16 @@ export default function SettingsApp() {
     const keys = {}
     if (provider === 'anthropic') keys.ANTHROPIC_API_KEY = keyInput.trim()
     if (provider === 'gemini') keys.GEMINI_API_KEY = keyInput.trim()
+    if (provider === 'openai') keys.OPENAI_API_KEY = keyInput.trim()
     const result = await window.electronAPI?.saveApiKeys(keys)
     setSaving(false)
     if (result?.success) {
       setEditingKey(null)
       setKeyInput('')
+      setKeySaved(provider)
+      setTimeout(() => setKeySaved(null), 1500)
       loadData()
+      window.electronAPI?.notifyProvidersChanged?.()
     } else {
       setKeyError(result?.error || 'Invalid key')
     }
@@ -79,6 +84,11 @@ export default function SettingsApp() {
     <div className="settings-app">
       <div className="settings-header">
         <h1 className="settings-title">Settings</h1>
+        <button className="settings-close" onClick={handleClose}>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
       </div>
       <div className="settings-content">
         {/* API Keys */}
@@ -100,8 +110,8 @@ export default function SettingsApp() {
               <div className="settings-key-row">
                 <div className="settings-key-info">
                   <span className="settings-key-label">Anthropic</span>
-                  <span className="settings-key-value">
-                    {apiKeys.ANTHROPIC_API_KEY || 'Not configured'}
+                  <span className={`settings-key-value ${keySaved === 'anthropic' ? 'key-saved' : ''}`}>
+                    {keySaved === 'anthropic' ? '✓ Saved' : (apiKeys.ANTHROPIC_API_KEY || 'Not configured')}
                   </span>
                 </div>
                 {editingKey === 'anthropic' ? (
@@ -139,8 +149,8 @@ export default function SettingsApp() {
               <div className="settings-key-row">
                 <div className="settings-key-info">
                   <span className="settings-key-label">Gemini</span>
-                  <span className="settings-key-value">
-                    {apiKeys.GEMINI_API_KEY || 'Not configured'}
+                  <span className={`settings-key-value ${keySaved === 'gemini' ? 'key-saved' : ''}`}>
+                    {keySaved === 'gemini' ? '✓ Saved' : (apiKeys.GEMINI_API_KEY || 'Not configured')}
                   </span>
                 </div>
                 {editingKey === 'gemini' ? (
@@ -169,6 +179,45 @@ export default function SettingsApp() {
                     </button>
                     {apiKeys.GEMINI_API_KEY && (
                       <button className="settings-btn-sm danger" onClick={() => handleDeleteKey('gemini')}>Delete</button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* OpenAI */}
+              <div className="settings-key-row">
+                <div className="settings-key-info">
+                  <span className="settings-key-label">OpenAI</span>
+                  <span className={`settings-key-value ${keySaved === 'openai' ? 'key-saved' : ''}`}>
+                    {keySaved === 'openai' ? '✓ Saved' : (apiKeys.OPENAI_API_KEY || 'Not configured')}
+                  </span>
+                </div>
+                {editingKey === 'openai' ? (
+                  <div className="settings-key-edit">
+                    <input
+                      type="password"
+                      placeholder="sk-..."
+                      value={keyInput}
+                      onChange={(e) => setKeyInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveKey('openai')}
+                      autoFocus
+                      spellCheck={false}
+                    />
+                    <div className="settings-key-actions">
+                      <button className="settings-btn-sm" onClick={() => handleSaveKey('openai')} disabled={saving}>
+                        {saving ? '...' : 'Save'}
+                      </button>
+                      <button className="settings-btn-sm cancel" onClick={() => { setEditingKey(null); setKeyInput(''); setKeyError('') }}>Cancel</button>
+                    </div>
+                    {keyError && <div className="settings-key-error">{keyError}</div>}
+                  </div>
+                ) : (
+                  <div className="settings-key-actions">
+                    <button className="settings-btn-sm" onClick={() => { setEditingKey('openai'); setKeyInput(''); setKeyError('') }}>
+                      {apiKeys.OPENAI_API_KEY ? 'Update' : 'Add'}
+                    </button>
+                    {apiKeys.OPENAI_API_KEY && (
+                      <button className="settings-btn-sm danger" onClick={() => handleDeleteKey('openai')}>Delete</button>
                     )}
                   </div>
                 )}
@@ -227,9 +276,6 @@ export default function SettingsApp() {
             <span className="settings-shortcut-keys"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>C</kbd></span>
           </div>
         </div>
-      </div>
-      <div className="settings-footer">
-        <button className="settings-esc" onClick={handleClose}>ESC to close settings</button>
       </div>
     </div>
   )

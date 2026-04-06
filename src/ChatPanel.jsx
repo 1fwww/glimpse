@@ -77,12 +77,15 @@ export default function ChatPanel({
   onTogglePin,
   provider,
   setProvider,
+  modelId,
+  setModelId,
   availableProviders,
 }) {
   const [input, setInput] = useState('')
   const [threadMenuOpen, setThreadMenuOpen] = useState(false)
   const [textContext, setTextContext] = useState(initialContext || '')
   const [showApiKeySetup, setShowApiKeySetup] = useState(false)
+  const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
   const pendingQuestion = useRef(null)
   const pendingImageRef = useRef(null)
@@ -153,6 +156,16 @@ export default function ChatPanel({
     return () => window.removeEventListener('click', handleClick)
   }, [threadMenuOpen, setThreadMenuOpen])
 
+  // Close model menu on outside click
+  useEffect(() => {
+    if (!modelMenuOpen) return
+    const handleClick = (e) => {
+      if (!e.target.closest('.model-selector')) setModelMenuOpen(false)
+    }
+    setTimeout(() => window.addEventListener('click', handleClick), 0)
+    return () => window.removeEventListener('click', handleClick)
+  }, [modelMenuOpen])
+
   // When croppedImage changes (new screenshot), re-attach
   useEffect(() => {
     if (croppedImage) {
@@ -172,11 +185,21 @@ export default function ChatPanel({
     }
   }, [annotationCount])
 
-  // Expand panel when setup appears
+  // Listen for provider changes from Settings
+  useEffect(() => {
+    window.electronAPI?.onProvidersChanged?.(() => {
+      if (refreshProviders) refreshProviders()
+    })
+  }, [refreshProviders])
+
+  // Expand panel when setup appears, lower overlay so user can switch apps
   useEffect(() => {
     if (showApiKeySetup) {
       if (!chatFullSize) setChatFullSize(true)
       window.electronAPI?.resizeChatWindow?.({ width: 420, height: 520 })
+      window.electronAPI?.lowerOverlay?.()
+    } else {
+      window.electronAPI?.restoreOverlay?.()
     }
   }, [showApiKeySetup])
 
@@ -203,7 +226,7 @@ export default function ChatPanel({
       setTimeout(() => scrollToBottom(), 50)
       ;(async () => {
         try {
-          const result = await window.electronAPI.chatWithAI(apiMessages.current, provider)
+          const result = await window.electronAPI.chatWithAI(apiMessages.current, provider, modelId)
           setIsLoading(false)
           if (result.success) {
             const assistantText = result.content.map(c => c.text || '').join('')
@@ -278,17 +301,17 @@ export default function ChatPanel({
   const generateTitle = useCallback(async (msgs) => {
     if (!window.electronAPI?.generateTitle) return null
     try {
-      const result = await window.electronAPI.generateTitle(msgs, provider)
+      const result = await window.electronAPI.generateTitle(msgs, provider, modelId)
       if (result.success) return result.title
     } catch {}
     return null
-  }, [provider])
+  }, [provider, modelId])
 
   const sendMessage = async (overrideText) => {
     const text = (overrideText || input).trim()
     if (!text || isLoading) return
 
-    // No API keys configured → show message briefly, then setup
+    // No API keys configured → show setup
     if (!availableProviders.length) {
       pendingQuestion.current = text
       setInput('')
@@ -369,7 +392,7 @@ export default function ChatPanel({
     const isFirstMessage = apiMessages.current.length === 1
 
     try {
-      const result = await window.electronAPI.chatWithAI(apiMessages.current, provider)
+      const result = await window.electronAPI.chatWithAI(apiMessages.current, provider, modelId)
 
       // Hide loading dots before adding the response
       setIsLoading(false)
@@ -574,6 +597,7 @@ export default function ChatPanel({
             <button
               className={`chat-header-pin ${isPinned ? 'pinned' : ''}`}
               onClick={onTogglePin || (() => onPin(currentThread?.id))}
+              disabled={isLoading}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 17v5" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z" />
@@ -611,7 +635,7 @@ export default function ChatPanel({
             setTimeout(() => {
               setShowWelcome(false)
               setEyebrowWiggle(false)
-            }, 2000)
+            }, 2500)
           }} />
         ) : showWelcome ? (
           <div className="api-key-welcome">
@@ -636,7 +660,11 @@ export default function ChatPanel({
                     ref={isLastAssistant ? lastAssistantRef : null}
                   >
                     {msg.role === 'assistant' ? (
-                      <div className="msg-text"><Markdown remarkPlugins={[remarkGfm]}>{msg.text}</Markdown></div>
+                      <div className="msg-text"><Markdown remarkPlugins={[remarkGfm]} components={{
+                        a: ({ href, children }) => (
+                          <a href={href} onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal(href) }}>{children}</a>
+                        )
+                      }}>{msg.text}</Markdown></div>
                     ) : (
                       <>
                         {msg.image && (
@@ -708,7 +736,7 @@ export default function ChatPanel({
             rows={2}
             disabled={showApiKeySetup}
           />
-          <button className="chat-send-arrow" onClick={sendMessage} disabled={isLoading || !input.trim() || showApiKeySetup}>
+          <button className="chat-send-arrow" onClick={() => sendMessage()} disabled={isLoading || !input.trim() || showApiKeySetup}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 19V5M5 12l7-7 7 7" />
             </svg>
@@ -724,24 +752,49 @@ export default function ChatPanel({
           </button>
         )}
         <span className="thread-actions-spacer" />
-        {availableProviders.length > 1 ? (
-          <Tooltip text="Switch model">
-            <button
-              className="thread-action-link model-link"
-              onClick={() => {
-                const idx = availableProviders.findIndex(p => p.id === provider)
-                const next = availableProviders[(idx + 1) % availableProviders.length]
-                setProvider(next.id)
-              }}
-            >
-              {availableProviders.find(p => p.id === provider)?.model || 'AI'}
-            </button>
-          </Tooltip>
-        ) : (
-          <span className="thread-action-model">
-            {availableProviders.find(p => p.id === provider)?.model || 'AI'}
-          </span>
-        )}
+        {(() => {
+          const allModels = availableProviders.flatMap(p => p.models?.map(m => ({ ...m, provider: p.id, providerName: p.name })) || [])
+          const currentModel = allModels.find(m => m.id === modelId) || allModels[0]
+          const displayName = currentModel?.name || 'AI'
+          if (allModels.length > 0) {
+            return (
+              <div className="model-selector" style={{ position: 'relative' }}>
+                <button
+                  className="thread-action-link model-link"
+                  onClick={() => setModelMenuOpen(!modelMenuOpen)}
+                >
+                  {displayName}
+                  <svg className={`model-chevron ${modelMenuOpen ? 'open' : ''}`} viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                {modelMenuOpen && (
+                  <div className="model-dropdown">
+                    {availableProviders.map(p => (
+                      <div key={p.id}>
+                        <div className="model-dropdown-provider">{p.name}</div>
+                        {p.models?.map(m => (
+                          <button
+                            key={m.id}
+                            className={`model-dropdown-item ${m.id === modelId ? 'active' : ''}`}
+                            onClick={() => {
+                              setProvider(p.id)
+                              setModelId(m.id)
+                              setModelMenuOpen(false)
+                            }}
+                          >
+                            {m.name}
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          }
+          return <span className="thread-action-model">{displayName}</span>
+        })()}
         <Tooltip text="Settings">
           <button
             className="thread-action-settings"
