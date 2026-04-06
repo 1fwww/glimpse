@@ -86,6 +86,7 @@ export default function ChatPanel({
   const [textContext, setTextContext] = useState(initialContext || '')
   const [showApiKeySetup, setShowApiKeySetup] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const [modelMenuPos, setModelMenuPos] = useState(null)
   const [showWelcome, setShowWelcome] = useState(false)
   const pendingQuestion = useRef(null)
   const pendingImageRef = useRef(null)
@@ -102,6 +103,7 @@ export default function ChatPanel({
   const lastAssistantRef = useRef(null)
   const messagesContainerRef = useRef(null)
   const inputRef = useRef(null)
+  const modelSelectorRef = useRef(null)
   const apiMessages = useRef([])
   const lastSentImageRef = useRef(null)
   const prevThreadIdRef = useRef(null)
@@ -758,38 +760,47 @@ export default function ChatPanel({
           const displayName = currentModel?.name || 'AI'
           if (allModels.length > 0) {
             return (
-              <div className="model-selector" style={{ position: 'relative' }}>
+              <div className="model-selector" ref={modelSelectorRef}>
                 <button
                   className="thread-action-link model-link"
-                  onClick={() => setModelMenuOpen(!modelMenuOpen)}
+                  onClick={() => {
+                    if (!modelMenuOpen) {
+                      const r = modelSelectorRef.current?.getBoundingClientRect()
+                      if (r) setModelMenuPos({ bottom: window.innerHeight - r.top + 4, right: window.innerWidth - r.right })
+                    }
+                    setModelMenuOpen(!modelMenuOpen)
+                  }}
                 >
                   {displayName}
                   <svg className={`model-chevron ${modelMenuOpen ? 'open' : ''}`} viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M6 9l6 6 6-6" />
                   </svg>
                 </button>
-                {modelMenuOpen && (
-                  <div className="model-dropdown">
-                    {availableProviders.map(p => (
-                      <div key={p.id}>
-                        <div className="model-dropdown-provider">{p.name}</div>
-                        {p.models?.map(m => (
-                          <button
-                            key={m.id}
-                            className={`model-dropdown-item ${m.id === modelId ? 'active' : ''}`}
-                            onClick={() => {
-                              setProvider(p.id)
-                              setModelId(m.id)
-                              setModelMenuOpen(false)
-                            }}
-                          >
+                {modelMenuOpen && modelMenuPos && (() => {
+                  return ReactDOM.createPortal(
+                    <div className="model-dropdown" style={{ position: 'fixed', bottom: modelMenuPos.bottom, right: modelMenuPos.right }}>
+                      {availableProviders.map(p => (
+                        <div key={p.id}>
+                          <div className="model-dropdown-provider">{p.name}</div>
+                          {p.models?.map(m => (
+                            <button
+                              key={m.id}
+                              className={`model-dropdown-item ${m.id === modelId ? 'active' : ''}`}
+                              onClick={() => {
+                                setProvider(p.id)
+                                setModelId(m.id)
+                                setModelMenuOpen(false)
+                              }}
+                            >
                             {m.name}
                           </button>
                         ))}
                       </div>
                     ))}
-                  </div>
-                )}
+                    </div>,
+                    document.body
+                  )
+                })()}
               </div>
             )
           }
