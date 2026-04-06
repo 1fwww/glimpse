@@ -47,12 +47,13 @@ function Tooltip({ text, children }) {
   )
 }
 
-function ExpandableSnippet({ text }) {
+function ExpandableSnippet({ text, onDismiss }) {
   const [expanded, setExpanded] = useState(false)
   const isLong = text.length > 150
   const preview = isLong ? text.slice(0, 80) + ' … ' + text.slice(-30) : text
   return (
     <div className="msg-snippet" onClick={() => isLong && setExpanded(!expanded)} style={isLong ? { cursor: 'pointer' } : undefined}>
+      {onDismiss && <button className="snippet-dismiss" onClick={(e) => { e.stopPropagation(); onDismiss() }}>×</button>}
       <div className="msg-snippet-text">{expanded ? text : preview}</div>
       {isLong && <span className="msg-snippet-toggle">{expanded ? 'Show less' : 'Show more'}</span>}
     </div>
@@ -508,6 +509,7 @@ export default function ChatPanel({
   const showScrollDown = !isAtBottom && !isLoading
   const [eyebrowWiggle, setEyebrowWiggle] = useState(false)
 
+
   // Draggable panel
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const isDragging = useRef(false)
@@ -713,7 +715,52 @@ export default function ChatPanel({
                       <div className="msg-text"><Markdown remarkPlugins={[remarkGfm]} components={{
                         a: ({ href, children }) => (
                           <a href={href} onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal(href) }}>{children}</a>
-                        )
+                        ),
+                        code: ({ inline, className, children }) => {
+                          const text = String(children).replace(/\n$/, '')
+                          if (inline) {
+                            return (
+                              <code
+                                className="inline-code-copy"
+                                title="Click to copy"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(text)
+                                  const el = document.activeElement
+                                  if (el) { el.classList.add('code-copied'); setTimeout(() => el.classList.remove('code-copied'), 800) }
+                                }}
+                              >{children}</code>
+                            )
+                          }
+                          return (
+                            <div className="code-block-wrapper">
+                              <button className="code-block-copy" onClick={() => {
+                                navigator.clipboard.writeText(text)
+                                const btn = document.activeElement
+                                if (btn) { btn.textContent = '✓'; setTimeout(() => { btn.textContent = 'Copy' }, 800) }
+                              }}>Copy</button>
+                              <code className={className}>{children}</code>
+                            </div>
+                          )
+                        },
+                        pre: ({ children }) => <pre>{children}</pre>,
+                        blockquote: ({ children }) => {
+                          const ref = React.createRef()
+                          return (
+                            <blockquote className="bq-copyable" ref={ref}>
+                              {children}
+                              <button className="bq-copy-btn" onClick={() => {
+                                const clone = ref.current?.cloneNode(true)
+                                clone?.querySelector('.bq-copy-btn')?.remove()
+                                const text = clone?.innerText?.trim()
+                                if (text) {
+                                  navigator.clipboard.writeText(text)
+                                  const btn = ref.current?.querySelector('.bq-copy-btn')
+                                  if (btn) { btn.textContent = '✓'; btn.classList.add('bq-copied'); setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('bq-copied') }, 800) }
+                                }
+                              }}>Copy</button>
+                            </blockquote>
+                          )
+                        },
                       }}>{msg.text}</Markdown></div>
                       {msg.model && <div className="msg-model-tag">{msg.model}</div>}
                       </>
@@ -759,10 +806,9 @@ export default function ChatPanel({
         <div className="chat-input-box">
           {screenshotAttached && croppedImage && (
             <div className="input-attachment-cue">
-              <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <path d="M21 15l-5-5L5 21" />
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
               </svg>
               <span>Screenshot attached</span>
               {onDismissScreenshot && (
@@ -771,9 +817,8 @@ export default function ChatPanel({
             </div>
           )}
           {textContext && (
-            <div className="text-context-snippet">
-              <div className="snippet-text">{textContext.length > 120 ? textContext.slice(0, 80) + ' … ' + textContext.slice(-30) : textContext}</div>
-              <button className="snippet-dismiss" onClick={() => setTextContext('')}>×</button>
+            <div className="text-context-wrapper">
+              <ExpandableSnippet text={textContext} onDismiss={() => setTextContext('')} />
             </div>
           )}
           <textarea

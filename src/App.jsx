@@ -649,7 +649,7 @@ export default function App() {
         />
       )}
 
-      {!chatVisible && !selection && !hoveredWindow && (
+      {!chatVisible && !selection && (
         <div className="screenshot-mode-toast">
           Screenshot Mode
         </div>

@@ -76,6 +76,10 @@ function closeChatWindow() {
     chatWindow.close()
     chatWindow = null
   }
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.close()
+    settingsWindow = null
+  }
 }
 
 function getURL(hash) {
@@ -200,26 +204,41 @@ function toggleSettingsWindow() {
     const [pw] = parentWindow.getSize()
     ;({ x: settingsX, y: settingsY } = positionBeside(px, py, pw))
   } else if (settingsPanelHint) {
-    ;({ x: settingsX, y: settingsY } = positionBeside(settingsPanelHint.x, settingsPanelHint.y, settingsPanelHint.w))
+    const display = screen.getDisplayNearestPoint({ x: settingsPanelHint.x, y: settingsPanelHint.y })
+    const centeredY = display.bounds.y + Math.round((display.bounds.height - 520) / 2)
+    ;({ x: settingsX, y: settingsY } = positionBeside(settingsPanelHint.x, centeredY, settingsPanelHint.w))
   } else {
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
     settingsX = display.bounds.x + display.bounds.width - 450
     settingsY = display.bounds.y + 60
   }
 
+  const isOverlayMode = overlayWindow && !overlayWindow.isDestroyed()
+  const parentWin = isOverlayMode
+    ? overlayWindow
+    : (chatWindow && !chatWindow.isDestroyed() ? chatWindow : null)
   settingsWindow = new BrowserWindow({
     ...(settingsX !== undefined ? { x: settingsX, y: settingsY } : {}),
     width: 420, height: 520,
     frame: false,
     transparent: true,
     resizable: false,
+    show: false,
+    ...(parentWin ? { parent: parentWin } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   })
+  if (isOverlayMode) {
+    settingsWindow.setAlwaysOnTop(true, 'screen-saver')
+    settingsWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  }
   settingsWindow.loadURL(getURL('settings'))
+  settingsWindow.once('ready-to-show', () => {
+    settingsWindow.showInactive()
+  })
   settingsWindow.on('closed', () => { settingsWindow = null })
 }
 
@@ -432,17 +451,28 @@ const MODELS = {
   ],
 }
 
-async function chatWithClaude(messages, modelId) {
-  const response = await claudeClient.messages.create({
-    model: modelId,
-    max_tokens: 4096,
-    messages,
+function getSystemPrompt(messages) {
+  const hasRefText = messages.some(m => {
+    const text = Array.isArray(m.content) ? m.content.map(b => b.text || '').join('') : (m.content || '')
+    return text.includes('[Referenced text:')
   })
+  if (!hasRefText) return null
+  return 'When the user shares referenced text for proofreading, editing, or rewriting, always put your revised/rewritten version inside a markdown blockquote (lines starting with >). Keep your explanations outside the blockquote. This makes it easy for the user to identify and copy the rewritten text.'
+}
+
+async function chatWithClaude(messages, modelId) {
+  const opts = { model: modelId, max_tokens: 4096, messages }
+  const sys = getSystemPrompt(messages)
+  if (sys) opts.system = sys
+  const response = await claudeClient.messages.create(opts)
   return response.content.map(c => c.text || '').join('')
 }
 
 async function chatWithGemini(messages, modelId) {
-  const model = geminiClient.getGenerativeModel({ model: modelId })
+  const sys = getSystemPrompt(messages)
+  const modelOpts = { model: modelId }
+  if (sys) modelOpts.systemInstruction = sys
+  const model = geminiClient.getGenerativeModel(modelOpts)
   const history = []
   for (const msg of messages) {
     const parts = []
@@ -466,6 +496,8 @@ async function chatWithGemini(messages, modelId) {
 
 async function chatWithOpenAI(messages, modelId) {
   const openaiMessages = []
+  const sys = getSystemPrompt(messages)
+  if (sys) openaiMessages.push({ role: 'system', content: sys })
   for (const msg of messages) {
     if (Array.isArray(msg.content)) {
       const parts = []
@@ -547,7 +579,7 @@ app.whenReady().then(() => {
     const hadHome = homeWindow && !homeWindow.isDestroyed()
     closeHomeWindow()
     closeChatWindow()
-    if (hadHome) await new Promise(r => setTimeout(r, 150))
+    if (hadHome) await new Promise(r => setTimeout(r, 300))
 
     const activeDisplay = getActiveDisplay()
     const displayInfo = {
@@ -626,14 +658,7 @@ app.whenReady().then(() => {
     if (overlayWindow) { overlayWindow.destroy(); overlayWindow = null }
 
     if (chatWindow && !chatWindow.isDestroyed()) {
-      // Bring chat window to current Space (including fullscreen)
-      chatWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-      chatWindow.focus()
-      setTimeout(() => {
-        if (chatWindow && !chatWindow.isDestroyed()) chatWindow.setVisibleOnAllWorkspaces(false)
-      }, 100)
-
-      // Grab selected text even for existing window
+      // Grab selected text BEFORE focusing chat window (so Cmd+C targets the source app)
       await new Promise(r => setTimeout(r, 100))
       const savedClip = clipboard.readText()
       clipboard.writeText('')
@@ -648,6 +673,13 @@ app.whenReady().then(() => {
       }
       clipboard.writeText(savedClip)
       if (selText) chatWindow.webContents.send('text-context', selText)
+
+      // Now bring chat window to front
+      chatWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+      chatWindow.focus()
+      setTimeout(() => {
+        if (chatWindow && !chatWindow.isDestroyed()) chatWindow.setVisibleOnAllWorkspaces(false)
+      }, 100)
       const wasPinned = chatWindow.isAlwaysOnTop()
       chatWindow.setAlwaysOnTop(true)
       chatWindow.focus()
@@ -849,13 +881,10 @@ app.whenReady().then(() => {
     } else {
       settingsPanelHint = null
     }
-    const wasOverlayOnTop = overlayWindow && !overlayWindow.isDestroyed()
-    if (wasOverlayOnTop) overlayWindow.setAlwaysOnTop(false)
     toggleSettingsWindow()
     if (settingsWindow) {
       settingsWindow.once('closed', () => {
         if (overlayWindow && !overlayWindow.isDestroyed()) {
-          overlayWindow.setAlwaysOnTop(true, 'screen-saver')
           overlayWindow.focus()
         }
       })

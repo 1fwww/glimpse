@@ -197,7 +197,7 @@ export default function SettingsApp() {
           </div>
           <div className="settings-shortcut-row">
             <div className="settings-shortcut-info">
-              <span className="settings-pref-label">Quick chat</span>
+              <span className="settings-pref-label">Text chat</span>
               <span className="settings-shortcut-hint">Tip: Select text, then press to ask about it</span>
             </div>
             <span className="settings-shortcut-keys"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>X</kbd></span>

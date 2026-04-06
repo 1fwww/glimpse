@@ -27,6 +27,7 @@ const mosaicSizes = [16, 28, 44]
 
 export default function EditToolbar({ selection, chatPos, chatHeight, activeTool, setActiveTool, activeColor, setActiveColor, activeSize, setActiveSize, selectedIndex, annotations, setAnnotations: commitAnnotations, mosaicMode, setMosaicMode, undo, clearAll, canUndo, onCopy, onSave, copyFeedback, saveFeedback, chatMinimized, onToggleChat, onClose }) {
   const [showOptions, setShowOptions] = useState(false)
+  const [suppressAiTip, setSuppressAiTip] = useState(false)
   const lastStrokeSize = useRef(4)
   const lastFontSize = useRef(20)
   const lastMosaicSize = useRef(28)
@@ -158,9 +159,10 @@ export default function EditToolbar({ selection, chatPos, chatHeight, activeTool
       <div className="edit-toolbar-tools" onMouseLeave={() => setTooltip(null)}>
         <button
           className="edit-tool-btn"
-          onClick={() => {
+          onClick={(e) => {
             const panel = document.querySelector('.chat-panel')
-            const r = panel?.getBoundingClientRect()
+            const el = panel || e.currentTarget.closest('.edit-toolbar')
+            const r = el?.getBoundingClientRect()
             window.electronAPI?.openSettings(r ? { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null)
           }}
           onMouseEnter={(e) => { setTooltip('Settings'); setTooltipX(e.currentTarget.offsetLeft + e.currentTarget.offsetWidth / 2) }}
@@ -217,7 +219,7 @@ export default function EditToolbar({ selection, chatPos, chatHeight, activeTool
 
         <button
           ref={copyBtnRef}
-          className={`edit-tool-btn ${copyFeedback ? 'copied' : ''}`}
+          className={`edit-tool-btn edit-tool-primary ${copyFeedback ? 'copied' : ''}`}
           onClick={onCopy}
           onMouseEnter={(e) => { setTooltip(copyFeedback ? 'Copied to clipboard' : 'Copy'); setTooltipX(e.currentTarget.offsetLeft + e.currentTarget.offsetWidth / 2) }}
         >
@@ -226,14 +228,14 @@ export default function EditToolbar({ selection, chatPos, chatHeight, activeTool
               <path d="M20 6L9 17l-5-5" />
             </svg>
           ) : (
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
           )}
         </button>
         <button
           ref={saveBtnRef}
-          className={`edit-tool-btn ${saveFeedback ? 'copied' : ''}`}
+          className={`edit-tool-btn edit-tool-primary ${saveFeedback ? 'copied' : ''}`}
           onClick={onSave}
           onMouseEnter={(e) => { setTooltip(saveFeedback ? 'Saved' : 'Save'); setTooltipX(e.currentTarget.offsetLeft + e.currentTarget.offsetWidth / 2) }}
         >
@@ -242,7 +244,7 @@ export default function EditToolbar({ selection, chatPos, chatHeight, activeTool
               <path d="M20 6L9 17l-5-5" />
             </svg>
           ) : (
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
             </svg>
           )}
@@ -251,11 +253,11 @@ export default function EditToolbar({ selection, chatPos, chatHeight, activeTool
         <span className="edit-toolbar-sep" />
 
         <button
-          className="edit-tool-btn"
+          className="edit-tool-btn edit-tool-cancel"
           onClick={onClose}
           onMouseEnter={(e) => { setTooltip('Cancel'); setTooltipX(e.currentTarget.offsetLeft + e.currentTarget.offsetWidth / 2) }}
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
         </button>
@@ -272,9 +274,9 @@ export default function EditToolbar({ selection, chatPos, chatHeight, activeTool
       {/* AI chat toggle — visually separate circle */}
       <button
         className={`edit-ai-toggle ${!chatMinimized ? 'active' : ''}`}
-        onClick={onToggleChat}
+        onClick={() => { onToggleChat(); setSuppressAiTip(true); setTimeout(() => setSuppressAiTip(false), 3000) }}
         onMouseDown={(e) => e.stopPropagation()}
-        data-tip={chatMinimized ? 'Ask AI' : 'Minimize chat'}
+        {...(!suppressAiTip ? { 'data-tip': chatMinimized ? 'Ask AI' : 'Minimize chat' } : {})}
       >
         {chatMinimized ? (
           <svg viewBox="60 140 420 280" width="30" height="20">
