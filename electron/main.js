@@ -827,7 +827,7 @@ app.whenReady().then(() => {
       </body></html>`
 
     toast.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-    setTimeout(() => { if (!toast.isDestroyed()) toast.destroy() }, 1200)
+    setTimeout(() => { if (!toast.isDestroyed()) toast.destroy() }, 1800)
   })
 
   // IME support — lower overlay for IME visibility, don't restore to avoid flash
@@ -857,6 +857,7 @@ app.whenReady().then(() => {
       welcomeWindow.close()
       welcomeWindow = null
     }
+    createHomeWindow()
   })
 
   ipcMain.on('close-welcome', () => {

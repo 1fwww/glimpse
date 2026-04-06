@@ -22,11 +22,14 @@ function Tooltip({ text, children }) {
       onMouseEnter={() => {
         const r = ref.current?.getBoundingClientRect()
         if (!r) return
+        const centerX = r.left + r.width / 2
+        const nearRight = centerX > window.innerWidth - 50
+        const nearLeft = centerX < 50
         const spaceBelow = window.innerHeight - r.bottom
         if (spaceBelow > 34) {
-          setPos({ left: r.left + r.width / 2, top: r.bottom + 6, above: false })
+          setPos({ left: centerX, top: r.bottom + 6, above: false, nearRight, nearLeft })
         } else {
-          setPos({ left: r.left + r.width / 2, top: r.top - 6, above: true })
+          setPos({ left: centerX, top: r.top - 6, above: true, nearRight, nearLeft })
         }
       }}
       onMouseLeave={() => setPos(null)}
@@ -36,10 +39,12 @@ function Tooltip({ text, children }) {
       {children}
       {pos && ReactDOM.createPortal(
         <div className="chat-tooltip" style={{
-          left: pos.left,
+          left: pos.nearRight ? undefined : pos.left,
+          right: pos.nearRight ? 8 : undefined,
           top: pos.above ? undefined : pos.top,
           bottom: pos.above ? (window.innerHeight - pos.top) : undefined,
-          transform: 'translateX(-50%)',
+          transform: pos.nearRight ? 'none' : pos.nearLeft ? 'none' : 'translateX(-50%)',
+          animation: (pos.nearRight || pos.nearLeft) ? 'none' : undefined,
         }}>{text}</div>,
         document.body
       )}
@@ -642,6 +647,16 @@ export default function ChatPanel({
             </>
           )}
         </div>
+        <Tooltip text="New chat">
+          <button
+            className="chat-header-new"
+            onClick={onNewThread}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        </Tooltip>
         {(onTogglePin || onPin) && (
           <Tooltip text={isPinned ? 'Unpin' : 'Pin to screen'}>
             <button
@@ -655,16 +670,6 @@ export default function ChatPanel({
             </button>
           </Tooltip>
         )}
-        <Tooltip text="New chat">
-          <button
-            className="chat-header-new"
-            onClick={onNewThread}
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
-        </Tooltip>
       </div>
 
       {/* Messages */}
@@ -841,11 +846,6 @@ export default function ChatPanel({
 
       {/* Bottom bar */}
       <div className="thread-actions">
-        {onClose && (!croppedImage || isPinned) && (
-          <button className="thread-action-link" onClick={onClose}>
-            Close (Esc)
-          </button>
-        )}
         <Tooltip text="Settings">
           <button
             className="thread-action-settings"
@@ -861,6 +861,11 @@ export default function ChatPanel({
             </svg>
           </button>
         </Tooltip>
+        {onClose && (!croppedImage || isPinned) && (
+          <button className="thread-action-link thread-action-esc" onClick={onClose}>
+            <kbd className="thread-action-kbd">Esc</kbd> to close
+          </button>
+        )}
         <span className="thread-actions-spacer" />
         {(() => {
           const allModels = availableProviders.flatMap(p => p.models?.map(m => ({ ...m, provider: p.id, providerName: p.name })) || [])

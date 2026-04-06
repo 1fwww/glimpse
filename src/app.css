@@ -1484,6 +1484,24 @@
   color: var(--cyan-primary);
 }
 
+.thread-action-esc {
+  margin-left: 8px;
+}
+
+.thread-action-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-dim);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-right: 2px;
+}
+
 .model-link:hover {
   opacity: 1;
   color: var(--cyan-primary);
@@ -2340,10 +2358,28 @@
 
 .home-drag-bar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   padding: 10px 12px 0;
   -webkit-app-region: drag;
   flex-shrink: 0;
+}
+
+.home-settings-btn {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.home-settings-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .home-close {
@@ -2527,9 +2563,18 @@
 .home-footer {
   -webkit-app-region: no-drag;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   padding: 12px 0 18px;
   flex-shrink: 0;
+}
+
+.home-bg-hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  opacity: 0.6;
 }
 
 .home-footer-link {
