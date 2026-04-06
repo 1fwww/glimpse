@@ -42,7 +42,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   welcomeDone: () => ipcRenderer.send('welcome-done'),
   closeWelcome: () => ipcRenderer.send('close-welcome'),
   onShortcutTried: (callback) => ipcRenderer.on('shortcut-tried', (_, type) => callback(type)),
-  openSettings: () => ipcRenderer.send('open-settings'),
+  openSettings: (panelBounds) => ipcRenderer.send('open-settings', panelBounds),
   notifyProvidersChanged: () => ipcRenderer.send('providers-changed'),
   onProvidersChanged: (callback) => ipcRenderer.on('providers-changed', () => callback()),
   closeSettings: () => ipcRenderer.send('close-settings'),

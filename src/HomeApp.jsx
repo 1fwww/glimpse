@@ -74,6 +74,9 @@ export default function HomeApp() {
             {recentThreads.length > 0 ? (
               recentThreads.map(t => (
                 <button key={t.id} className="home-recent-item" onClick={() => window.electronAPI?.openThreadInChat?.(t.id)}>
+                  <svg className="home-recent-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
                   <span className="home-recent-title">{t.title}</span>
                   <span className="home-recent-time">{formatTime(t.updatedAt)}</span>
                 </button>

@@ -154,7 +154,7 @@ export default function ApiKeySetup({ onDone, onSkip }) {
         {onSkip && (
           <>
             <span className="api-key-dot">·</span>
-            <button className="api-key-link" onClick={onSkip}>Continue without AI</button>
+            <button className="api-key-link" onClick={onSkip}>Maybe later</button>
           </>
         )}
       </div>

@@ -158,7 +158,11 @@ export default function EditToolbar({ selection, chatPos, chatHeight, activeTool
       <div className="edit-toolbar-tools" onMouseLeave={() => setTooltip(null)}>
         <button
           className="edit-tool-btn"
-          onClick={() => window.electronAPI?.openSettings()}
+          onClick={() => {
+            const panel = document.querySelector('.chat-panel')
+            const r = panel?.getBoundingClientRect()
+            window.electronAPI?.openSettings(r ? { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null)
+          }}
           onMouseEnter={(e) => { setTooltip('Settings'); setTooltipX(e.currentTarget.offsetLeft + e.currentTarget.offsetWidth / 2) }}
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

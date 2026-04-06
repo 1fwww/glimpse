@@ -141,6 +141,7 @@ function savePreference(key, value) {
 // ── Settings window ──
 
 let settingsWindow = null
+let settingsPanelHint = null
 
 // ── Home window ──
 
@@ -184,7 +185,41 @@ function toggleSettingsWindow() {
     settingsWindow = null
     return
   }
+  // Position settings to avoid overlapping other windows
+  let settingsX, settingsY
+  const parentWindow = chatWindow || homeWindow
+  if (parentWindow && !parentWindow.isDestroyed()) {
+    const [px, py] = parentWindow.getPosition()
+    const [pw] = parentWindow.getSize()
+    const display = screen.getDisplayNearestPoint({ x: px, y: py })
+    const rightSpace = display.bounds.x + display.bounds.width - (px + pw)
+    if (rightSpace >= 440) {
+      settingsX = px + pw + 20
+      settingsY = py
+    } else {
+      settingsX = Math.max(display.bounds.x, px - 440)
+      settingsY = py
+    }
+  } else if (settingsPanelHint) {
+    // Overlay mode — position relative to chat panel
+    const { x: px, y: py, w: pw } = settingsPanelHint
+    const display = screen.getDisplayNearestPoint({ x: px, y: py })
+    const rightSpace = display.bounds.x + display.bounds.width - (px + pw)
+    if (rightSpace >= 440) {
+      settingsX = px + pw + 20
+      settingsY = py
+    } else {
+      settingsX = Math.max(display.bounds.x, px - 440)
+      settingsY = py
+    }
+  } else {
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+    settingsX = display.bounds.x + display.bounds.width - 450
+    settingsY = display.bounds.y + 60
+  }
+
   settingsWindow = new BrowserWindow({
+    ...(settingsX !== undefined ? { x: settingsX, y: settingsY } : {}),
     width: 420, height: 520,
     frame: false,
     transparent: true,
@@ -786,7 +821,14 @@ app.whenReady().then(() => {
     if (chatWindow && !chatWindow.isDestroyed()) chatWindow.webContents.send('providers-changed')
   })
 
-  ipcMain.on('open-settings', () => {
+  ipcMain.on('open-settings', (_, panelBounds) => {
+    // Store panel bounds for settings positioning in overlay mode
+    if (panelBounds && overlayWindow && !overlayWindow.isDestroyed()) {
+      const ob = overlayWindow.getBounds()
+      settingsPanelHint = { x: ob.x + panelBounds.x, y: ob.y + panelBounds.y, w: panelBounds.w, h: panelBounds.h }
+    } else {
+      settingsPanelHint = null
+    }
     const wasOverlayOnTop = overlayWindow && !overlayWindow.isDestroyed()
     if (wasOverlayOnTop) overlayWindow.setAlwaysOnTop(false)
     toggleSettingsWindow()

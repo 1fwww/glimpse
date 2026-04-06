@@ -52,6 +52,7 @@ export default function ChatOnlyApp() {
         style={{}}
         croppedImage={croppedImage}
         getCompositeImage={null}
+        onDismissScreenshot={() => setCroppedImage(null)}
         currentThread={tm.currentThread}
         setCurrentThread={tm.setCurrentThread}
         recentThreads={tm.recentThreads}

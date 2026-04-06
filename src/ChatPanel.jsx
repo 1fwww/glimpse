@@ -90,6 +90,7 @@ export default function ChatPanel({
   const [showWelcome, setShowWelcome] = useState(false)
   const pendingQuestion = useRef(null)
   const pendingImageRef = useRef(null)
+  const pendingSnippetRef = useRef(null)
 
   // Update textContext when initialContext arrives via IPC
   useEffect(() => {
@@ -210,8 +211,10 @@ export default function ChatPanel({
     if (!showWelcome && pendingQuestion.current && availableProviders.length > 0) {
       const q = pendingQuestion.current
       const pendingImage = pendingImageRef.current
+      const pendingSnippet = pendingSnippetRef.current
       pendingQuestion.current = null
       pendingImageRef.current = null
+      pendingSnippetRef.current = null
       setInput('')
 
       // Build API message from the already-displayed user message
@@ -220,7 +223,12 @@ export default function ChatPanel({
         const mediaType = pendingImage.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png'
         contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: pendingImage.split(',')[1] } })
       }
-      contentBlocks.push({ type: 'text', text: q })
+      let apiText = q
+      if (pendingSnippet) {
+        apiText = `[Referenced text: "${pendingSnippet}"]\n\n${q}`
+        setTextContext('')
+      }
+      contentBlocks.push({ type: 'text', text: apiText })
       apiMessages.current.push({ role: 'user', content: contentBlocks })
 
       // Send to AI without re-adding user message to UI
@@ -233,7 +241,8 @@ export default function ChatPanel({
           if (result.success) {
             const assistantText = result.content.map(c => c.text || '').join('')
             apiMessages.current.push({ role: 'assistant', content: result.content })
-            setMessages(prev => [...prev, { role: 'assistant', text: assistantText }])
+            const currentModelName = availableProviders.flatMap(p => p.models || []).find(m => m.id === modelId)?.name || ''
+            setMessages(prev => [...prev, { role: 'assistant', text: assistantText, model: currentModelName }])
             if (!chatFullSize) setChatFullSize(true)
             setTimeout(() => scrollToLastAssistant(), 550)
 
@@ -320,6 +329,11 @@ export default function ChatPanel({
       if (!chatFullSize) setChatFullSize(true)
       // Show user's message in chat
       const msgEntry = { role: 'user', text }
+      if (textContext) {
+        msgEntry.snippet = textContext
+        pendingSnippetRef.current = textContext
+        setTextContext('')
+      }
       if (croppedImage) {
         const composite = await getCompositeImage?.()
         msgEntry.image = composite || croppedImage
@@ -404,7 +418,8 @@ export default function ChatPanel({
         const assistantApiMsg = { role: 'assistant', content: result.content }
         apiMessages.current.push(assistantApiMsg)
 
-        setMessages(prev => [...prev, { role: 'assistant', text: assistantText }])
+        const currentModelName = availableProviders.flatMap(p => p.models || []).find(m => m.id === modelId)?.name || ''
+        setMessages(prev => [...prev, { role: 'assistant', text: assistantText, model: currentModelName }])
 
         // Expand panel after AI responds
         if (!chatFullSize) setChatFullSize(true)
@@ -439,10 +454,22 @@ export default function ChatPanel({
           }
         }
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${result.error}` }])
+        const errMsg = result.error || 'Something went wrong'
+        if (errMsg.includes('API key') || errMsg.includes('auth') || errMsg.includes('401') || errMsg.includes('Cannot read')) {
+          setMessages(prev => [...prev, { role: 'assistant', text: 'API key missing or invalid. Please check Settings.' }])
+          if (refreshProviders) refreshProviders()
+        } else {
+          setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${errMsg}` }])
+        }
       }
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${err.message}` }])
+      const errMsg = err.message || 'Something went wrong'
+      if (errMsg.includes('API key') || errMsg.includes('auth') || errMsg.includes('null') || errMsg.includes('Cannot read')) {
+        setMessages(prev => [...prev, { role: 'assistant', text: 'API key missing or invalid. Please check Settings.' }])
+        if (refreshProviders) refreshProviders()
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${errMsg}` }])
+      }
     }
 
     setIsLoading(false)
@@ -574,21 +601,21 @@ export default function ChatPanel({
           {threadMenuOpen && (
             <>
               <div className="thread-menu-popup header-popup">
-                <button className="thread-menu-item" onClick={() => { onNewThread(); setThreadMenuOpen(false) }}>
-                  <span>New chat</span>
-                </button>
-                {recentThreads.filter(t => t.id !== currentThread?.id).slice(0, 3).map(t => (
-                  <button key={t.id} className="thread-menu-item" onClick={() => { onThreadChange(t); setThreadMenuOpen(false) }} title={t.title}>
-                    <span>{t.title}</span>
-                  </button>
-                ))}
-                {recentThreads.length > 0 && (
+                {recentThreads.filter(t => t.id !== currentThread?.id).length > 0 ? (
                   <>
+                    {recentThreads.filter(t => t.id !== currentThread?.id).slice(0, 3).map(t => (
+                      <button key={t.id} className="thread-menu-item" onClick={() => { onThreadChange(t); setThreadMenuOpen(false) }} title={t.title}>
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                        <span>{t.title}</span>
+                      </button>
+                    ))}
                     <div className="thread-menu-divider" />
                     <button className="thread-menu-item thread-menu-clear" onClick={() => { onClearAllThreads(); setThreadMenuOpen(false) }}>
                       <span>Clear all chats</span>
                     </button>
                   </>
+                ) : (
+                  <div className="thread-menu-empty">No other chats</div>
                 )}
               </div>
             </>
@@ -627,6 +654,7 @@ export default function ChatPanel({
             setMessages([])
             pendingQuestion.current = null
             pendingImageRef.current = null
+            pendingSnippetRef.current = null
             setChatFullSize(false)
             if (onMinimize) onMinimize()
           }} onDone={async () => {
@@ -662,11 +690,14 @@ export default function ChatPanel({
                     ref={isLastAssistant ? lastAssistantRef : null}
                   >
                     {msg.role === 'assistant' ? (
+                      <>
                       <div className="msg-text"><Markdown remarkPlugins={[remarkGfm]} components={{
                         a: ({ href, children }) => (
                           <a href={href} onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal(href) }}>{children}</a>
                         )
                       }}>{msg.text}</Markdown></div>
+                      {msg.model && <div className="msg-model-tag">{msg.model}</div>}
+                      </>
                     ) : (
                       <>
                         {msg.image && (
@@ -750,9 +781,24 @@ export default function ChatPanel({
       <div className="thread-actions">
         {onClose && (!croppedImage || isPinned) && (
           <button className="thread-action-link" onClick={onClose}>
-            ESC to close
+            Close (Esc)
           </button>
         )}
+        <Tooltip text="Settings">
+          <button
+            className="thread-action-settings"
+            onClick={() => {
+              const panel = document.querySelector('.chat-panel')
+              const r = panel?.getBoundingClientRect()
+              window.electronAPI?.openSettings(r ? { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null)
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        </Tooltip>
         <span className="thread-actions-spacer" />
         {(() => {
           const allModels = availableProviders.flatMap(p => p.models?.map(m => ({ ...m, provider: p.id, providerName: p.name })) || [])
@@ -806,17 +852,6 @@ export default function ChatPanel({
           }
           return <span className="thread-action-model">{displayName}</span>
         })()}
-        <Tooltip text="Settings">
-          <button
-            className="thread-action-settings"
-            onClick={() => window.electronAPI?.openSettings()}
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </button>
-        </Tooltip>
       </div>
     </div>
   )
